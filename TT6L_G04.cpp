@@ -29,7 +29,7 @@ class VMStack : public BaseStack<signed char>
         signed char stackArray[STACK_MAX];
 
     public:
-        VMStack() 
+        VMStack()
         {
             for (int i = 0; i < STACK_MAX; i++) stackArray[i] = 0;
         }
@@ -52,7 +52,7 @@ class VMStack : public BaseStack<signed char>
             {
                 // underflow triggers system crash according to project specs
                 std::cout << "System Error: Stack Underflow detected! Virtual Machine crashed." << std::endl;
-                exit(1); 
+                exit(1);
             }
             SI--; // decrement Stack Index register before popping to point to top element
             return stackArray[(int)SI];
@@ -68,7 +68,7 @@ class Register
     public:
         Register() : value(0) {}
         virtual ~Register() {} // virtual destructor for safe polymorphic cleanups
-    
+
         void setValue(signed char val) { this->value = val; }
         signed char getValue() const { return this->value; }
 
