@@ -5,6 +5,12 @@ Written by:       ELLY MAZLIN
 Lectures Covered: 1, 2, 3, 4, 7, 8
 Responsibility:   Simulating core VM hardware components (Memory, Stack, Registers)
 =================================================================================
+=================================================================================
+PART:             Hardware Lead
+Written by:       AMIRA SOFIA
+Lectures Covered: 1,2,3,4,7,8
+Responsibility:   Track ZF, CF, OF, UF flags
+=================================================================================
 */
 
 #include <iostream>
@@ -132,32 +138,81 @@ class Memory
         }
 };
 
-// BITWISE FLAGS REGISTER (Amira's part interface integration)
+// HARDWARE LEAD: Flag Register for ZF, CF, OF, UF
 class FlagRegister
 {
     private:
-        unsigned char FLAGS; // individual flags packed neatly into a single raw byte
+        bool zeroFlag;      // ZF - Zero Flag
+        bool carryFlag;     // CF - Carry Flag
+        bool overflowFlag;  // OF - Overflow Flag
+        bool underflowFlag; // UF - Underflow Flag
 
     public:
-        FlagRegister() : FLAGS(0) {}
+        FlagRegister() : zeroFlag(false), carryFlag(false),
+                         overflowFlag(false), underflowFlag(false) {}
 
-        // bitwise configurations conforming to Amira's logic specifications
-        static const unsigned char BIT_ZF = 1 << 0; // Zero Flag
-        static const unsigned char BIT_CF = 1 << 1; // Carry Flag
-        static const unsigned char BIT_OF = 1 << 2; // Overflow Flag
-        static const unsigned char BIT_UF = 1 << 3; // Underflow Flag
+        // Setter methods for flags
+        void setZeroFlag(bool value) { zeroFlag = value; }
+        void setCarryFlag(bool value) { carryFlag = value; }
+        void setOverflowFlag(bool value) { overflowFlag = value; }
+        void setUnderflowFlag(bool value) { underflowFlag = value; }
 
-        void setFlag(unsigned char flagBit, bool value)
+        // Getter methods for flags
+        bool getZeroFlag() const { return zeroFlag; }
+        bool getCarryFlag() const { return carryFlag; }
+        bool getOverflowFlag() const { return overflowFlag; }
+        bool getUnderflowFlag() const { return underflowFlag; }
+
+        // Reset all flags
+        void resetFlags()
         {
-            if (value) FLAGS |= flagBit;       // bitwise OR assignment
-            else FLAGS &= ~flagBit;            // bitwise AND + NOT bit-clear
+            zeroFlag = false;
+            carryFlag = false;
+            overflowFlag = false;
+            underflowFlag = false;
         }
 
-        bool getFlag(unsigned char flagBit) const
+        // Update flags based on arithmetic operation result
+        void updateArithmeticFlags(signed char result, signed char operand1, signed char operand2)
         {
-            return (FLAGS & flagBit) != 0;     // bitwise checking returning boolean
+            // ZF: Set if result is zero
+            zeroFlag = (result == 0);
+
+            // CF: Set for unsigned carry/borrow (simplified)
+            int extendedResult = (int)operand1 + (int)operand2;
+            carryFlag = (extendedResult > 127 || extendedResult < -128);
+
+            // OF: Set if result exceeds 125 (box quota max)
+            overflowFlag = (result > 125);
+
+            // UF: Set if result is below -125 (box quota min)
+            underflowFlag = (result < -125);
         }
 
-        void resetFlags() { FLAGS = 0; }
-        unsigned char getRawFlags() const { return FLAGS; }
+        // Update flags for input validation
+        void updateInputFlags(signed char value)
+        {
+            zeroFlag = (value == 0);
+            overflowFlag = (value > 125);
+            underflowFlag = (value < -125);
+            carryFlag = false; // Clear carry for input operations
+        }
+
+        // Display current flag status
+        void displayFlags() const
+        {
+            std::cout << "ZF=" << (zeroFlag ? "1" : "0") << " ";
+            std::cout << "CF=" << (carryFlag ? "1" : "0") << " ";
+            std::cout << "OF=" << (overflowFlag ? "1" : "0") << " ";
+            std::cout << "UF=" << (underflowFlag ? "1" : "0") << std::endl;
+        }
+
+        // Get flags as formatted string
+        std::string getFlagsString() const
+        {
+            return std::to_string(zeroFlag ? 1 : 0) + "#" +
+                   std::to_string(carryFlag ? 1 : 0) + "#" +
+                   std::to_string(overflowFlag ? 1 : 0) + "#" +
+                   std::to_string(underflowFlag ? 1 : 0);
+        }
 };
