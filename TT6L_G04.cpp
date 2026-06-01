@@ -6,7 +6,14 @@ Lectures Covered: 1, 2, 3, 4, 7, 8
 Responsibility:   Simulating core VM hardware components (Memory, Stack, Registers)
 =================================================================================
 */
-
+/*
+=================================================================================
+PART:             The Logic Instruction Set and the manual Bitwise Rotation/Shifting algorithms
+Written by:       MUHAMMAD YUSOF BIN SHAHILAN
+Lectures Covered: 1, 2, 3, 4, 7, 8
+Responsibility:   Build the Instruction hierarchy. Write the logic for ADD, MUL, ROL, and SHL
+=================================================================================
+*/
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -161,3 +168,66 @@ class FlagRegister
         void resetFlags() { FLAGS = 0; }
         unsigned char getRawFlags() const { return FLAGS; }
 };
+
+class instruction
+{
+    public:
+        virtual void execute() = 0; // pure virtual function for instruction execution
+        virtual ~instruction() {}
+};
+
+class ADD : public instruction
+{
+    private:
+        GeneralRegister *reg1;
+        GeneralRegister *reg2;  
+
+    public:
+        ADD(GeneralRegister *r1, GeneralRegister *r2) : reg1(r1), reg2(r2) {}
+        void execute() override
+        {
+            reg1->setValue(reg1->getValue() + reg2->getValue());
+        }
+};
+
+class MUL : public instruction
+{
+    private:
+        GeneralRegister *reg1;
+        GeneralRegister *reg2;  
+
+    public:
+        MUL(GeneralRegister *r1, GeneralRegister *r2) : reg1(r1), reg2(r2) {}
+        void execute() override
+        {
+            reg1->setValue(reg1->getValue() * reg2->getValue());
+        }
+};
+
+class ROL : public instruction
+{
+    private:
+        GeneralRegister *reg;   
+
+    public:
+        ROL(GeneralRegister *r) : reg(r) {}
+        void execute() override
+        {
+            signed char value = reg->getValue();
+            reg->setValue((value << 1) | ((value >> 7) & 0x01)); // rotate left by 1 bit
+        }
+};
+
+class SHL : public instruction
+{
+    private:
+        GeneralRegister *reg;   
+
+    public:
+        SHL(GeneralRegister *r) : reg(r) {}
+        void execute() override
+        {
+            signed char value = reg->getValue();
+            reg->setValue(value << 1); // shift left by 1 bit (logical shift)
+        }
+};  
