@@ -12,7 +12,7 @@ Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Track ZF, CF, OF, UF flags
 =================================================================================
 =================================================================================
-PART:             Arithmetic Lead
+PART:             Logic Arithmatic Lead
 Written by:       MUHAMMAD YUSOF BIN SHAHILAN
 Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Implementing instruction set, opcode parsing, and execution logic
