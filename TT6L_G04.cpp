@@ -11,7 +11,15 @@ Written by:       AMIRA SOFIA
 Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Track ZF, CF, OF, UF flags
 =================================================================================
+=================================================================================
+PART:             Arithmetic Lead
+Written by:       MUHAMMAD YUSOF BIN SHAHILAN
+Lectures Covered: 1,2,3,4,7,8
+Responsibility:   Implementing instruction set, opcode parsing, and execution logic
+=================================================================================
 */
+
+
 
 #include <iostream>
 #include <stdexcept>
@@ -216,3 +224,148 @@ class FlagRegister
                    std::to_string(underflowFlag ? 1 : 0);
         }
 };
+
+class VirtualMachine
+{
+    private:
+        Memory memory; // 64 bytes of memory space
+        VMStack stack; // custom stack structure with push/pop and overflow/underflow handling
+        GeneralRegister registers[4]; // 4 general-purpose registers (R0, R1, R2, R3)
+        FlagRegister flags; // flag register for ZF, CF, OF, UF
+        
+        int PC;
+        signed char SI;
+        bool isRunning;
+
+        void executeLDI()
+        {
+            signed char regIndex = memory.read(PC++);
+            signed char value = memory.read(PC++);
+            registers[regIndex].setValue(value);
+            flags.updateInputFlags(value);
+        }// Arithmetic operation with flag updates
+        void executeADD()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char srcReg = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char val2 = registers[srcReg].getValue();
+            signed char result = val1 + val2;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, val2);
+        }// Stack operations with overflow/underflow handling
+
+        void executeMOV()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char srcReg = memory.read(PC++);
+            
+            // Copy value from source to destination
+            signed char valueToCopy = registers[srcReg].getValue();
+            registers[destReg].setValue(valueToCopy);
+            flags.updateInputFlags(valueToCopy); 
+        }
+        void executeSUB()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char srcReg = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char val2 = registers[srcReg].getValue();
+            signed char result = val1 - val2;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, -val2); // -val2 for subtraction logic
+        }
+        void executeMUL()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char srcReg = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char val2 = registers[srcReg].getValue();
+            signed char result = val1 * val2;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, val2);
+        }
+        void executeDIV()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char srcReg = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char val2 = registers[srcReg].getValue();
+
+            // Hardware safety check: Prevent divide by zero crash
+            if (val2 == 0) {
+                throw std::runtime_error("ALU Error: Division by zero detected!");
+            }
+            signed char result = val1 / val2;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, val2);
+        }
+        void executePUSH()
+        {
+            signed char regIndex = memory.read(PC++);
+            stack.push(registers[regIndex].getValue(), SI);
+        }// Stack operations with overflow/underflow handling
+
+        void executePOP()
+        {
+            signed char regIndex = memory.read(PC++);
+            registers[regIndex].setValue(stack.pop(SI));
+        }// Additional instruction implementations (SUB, MUL, DIV, etc.) can be added here with appropriate flag updates
+
+    public:
+        // Opcode definitions for instruction set
+        enum Opcodes { 
+            HLT = 0x00, LDI = 0x01, ADD = 0x02, PUSH = 0x03, POP = 0x04,
+            MOV = 0x05, SUB = 0x06, MUL = 0x07, DIV = 0x08 
+        };
+
+        VirtualMachine() : PC(0), SI(0), isRunning(false)
+        {
+            registers[0] = GeneralRegister("R0");
+            registers[1] = GeneralRegister("R1");
+            registers[2] = GeneralRegister("R2");
+            registers[3] = GeneralRegister("R3");
+        }// Method to load a program (array of signed char opcodes) into memory
+        void loadProgram(const signed char* program, int size)
+        {
+            for (int i = 0; i < size; i++) memory.write(i, program[i]);
+            PC = 0; 
+        }// Main execution loop of the virtual machine
+
+        void run()
+        {
+            isRunning = true;
+            while (isRunning)
+            {
+                signed char opcode = memory.read(PC++); // FETCH
+                switch (opcode) // DECODE & EXECUTE
+                {
+                    case HLT:  isRunning = false; break;
+                    case LDI:  executeLDI();      break;
+                    case ADD:  executeADD();      break;
+                    case PUSH: executePUSH();     break;
+                    case POP:  executePOP();      break;
+                    case MOV:  executeMOV();      break;
+                    case SUB:  executeSUB();      break;
+                    case MUL:  executeMUL();      break;
+                    case DIV:  executeDIV();      break;
+                    default:   isRunning = false; break; 
+                }
+            }
+        }
+        void printState() const
+        {
+            std::cout << "=== VM State ===" << std::endl;
+            for (int i = 0; i < 4; i++) registers[i].printStatus();
+            flags.displayFlags();
+            std::cout << "PC: " << PC << ", SI: " << (int)SI << std::endl;
+        }
+};
+
+
+int main()
+{
+   //goodluck gng
+
+    return 0;
+}
