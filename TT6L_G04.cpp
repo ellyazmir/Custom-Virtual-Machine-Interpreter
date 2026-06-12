@@ -379,6 +379,7 @@ private:
     VirtualMachine vm;
     vector<string> rawLines;
 
+    //removes leading and trailing spaces
     string trim(string s)
     {
         int start = 0;
@@ -396,6 +397,7 @@ private:
         return s.substr(start, end - start + 1);
     }
 
+    //changes 'Rx' to 'x'
     int regIndex(string token)
     {
         char digitChar = token[1];
@@ -403,11 +405,13 @@ private:
         return digit;
     }
 
+    //check if the token is a valid register
     bool isRegister(string token)
     {
         return(token.length() >= 2 && token[0] == 'R');
     }
 
+    //split instruction from 'Rx, y' into ['Rx', '5']
     vector<string> split(string text, char delimiter)
     {
         vector<string> result;
@@ -423,6 +427,7 @@ private:
     }
 
 public:
+    //read .asm file, skip empty lines
     void loadProgram(string filename)
     {
         ifstream file(filename);
@@ -447,6 +452,7 @@ public:
         file.close();
     }
 
+    //comvert each line into opcode + operand bytes and lpad into VM's memory
     void assemble()
     {
         vector<signed char> bytecode;
@@ -528,11 +534,13 @@ public:
         vm.loadProgram(bytecode.data(), (int)bytecode.size());
     }
 
+    //run the program
     void run()
     {
         vm.run();
     }
 
+    //print final state of the virtual machine
     void dumpState()
     {
         vm.printState();
@@ -542,7 +550,12 @@ public:
 
 int main()
 {
-   //goodluck gng
+   Runner runner;
+
+   runner.loadProgram("VirtualMachine.asm");
+   runner.assemble();
+   runner.run();
+   runner.dumpState();
 
     return 0;
 }
