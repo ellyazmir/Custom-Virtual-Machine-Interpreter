@@ -373,6 +373,172 @@ class VirtualMachine
         }
 };
 
+class Runner
+{
+private:
+    VirtualMachine vm;
+    vector<string> rawLines;
+
+    string trim(string s)
+    {
+        int start = 0;
+        int end = s.length() - 1;
+
+        while(start <= end && s[start] == ' ')
+            start++;
+
+        while(end >= start && s[end] == ' ')
+            end--;
+
+        if (start > end)
+            return "";
+
+        return s.substr(start, end - start + 1);
+    }
+
+    int regIndex(string token)
+    {
+        char digitChar = token[1];
+        int digit = digitChar - '0';
+        return digit;
+    }
+
+    bool isRegister(string token)
+    {
+        return(token.length() >= 2 && token[0] == 'R');
+    }
+
+    vector<string> split(string text, char delimiter)
+    {
+        vector<string> result;
+        stringstream stream(text);
+        string piece;
+
+        while(getline(stream, piece, delimiter))
+        {
+            result.push_back(trim(piece));
+        }
+
+        return result;
+    }
+
+public:
+    void loadProgram(string filename)
+    {
+        ifstream file(filename);
+
+        if(!file.is_open())
+        {
+            cout << "Error: cannot open file " << filename << endl;
+            exit(1);
+        }
+
+        string line;
+        while(getline(file, line))
+        {
+            string cleanLine = trim(line);
+
+            if(cleanLine == "")
+                continue;
+
+            rawLines.push_back(cleanLine);
+        }
+
+        file.close();
+    }
+
+    void assemble()
+    {
+        vector<signed char> bytecode;
+
+        for(int i=0; i < (int)rawLines.size(); i++)
+        {
+            string line = rawLines[i];
+
+            stringstream lineStream(line);
+            string opcode;
+            string restOfLine;
+
+            lineStream >> opcode;
+            getline(lineStream, restOfLine);
+
+            vector<string> operands = split(trim(restOfLine), ',');
+
+            if(opcode == "MOV")
+            {
+                int destReg = regIndex(operands[0]);
+                string secondOperand = operands[1];
+
+                if(isRegister(secondOperand))
+                {
+                    bytecode.push_back(VirtualMachine::MOV);
+                    bytecode.push_back((signed char)destReg);
+                    bytecode.push_back((signed char)regIndex(secondOperand));
+                }
+                else
+                {
+                    bytecode.push_back(VirtualMachine::LDI);
+                    bytecode.push_back((signed char)destReg);
+                    bytecode.push_back((signed char)stoi(secondOperand));
+                }
+            }
+            else if(opcode == "ADD")
+            {
+                bytecode.push_back(VirtualMachine::ADD);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+                bytecode.push_back((signed char)regIndex(operands[1]));
+            }
+            else if(opcode == "SUB")
+            {
+                bytecode.push_back(VirtualMachine::SUB);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+                bytecode.push_back((signed char)regIndex(operands[1]));
+            }
+            else if(opcode == "MUL")
+            {
+                bytecode.push_back(VirtualMachine::MUL);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+                bytecode.push_back((signed char)regIndex(operands[1]));
+            }
+            else if(opcode == "DIV")
+            {
+                bytecode.push_back(VirtualMachine::DIV);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+                bytecode.push_back((signed char)regIndex(operands[1]));
+            }
+            else if(opcode == "PUSH")
+            {
+                bytecode.push_back(VirtualMachine::PUSH);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+            }
+            else if(opcode == "POP")
+            {
+                bytecode.push_back(VirtualMachine::POP);
+                bytecode.push_back((signed char)regIndex(operands[0]));
+            }
+            else
+            {
+                cout << "Error: unknown instruction '" << opcode << "'" << endl;
+                exit(1);
+            }
+        }
+
+        bytecode.push_back(VirtualMachine::HLT);
+
+        vm.loadProgram(bytecode.data(), (int)bytecode.size());
+    }
+
+    void run()
+    {
+        vm.run();
+    }
+
+    void dumpState()
+    {
+        vm.printState();
+    }
+
+};
 
 int main()
 {
