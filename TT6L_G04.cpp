@@ -17,6 +17,13 @@ Written by:       MUHAMMAD YUSOF BIN SHAHILAN
 Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Implementing instruction set, opcode parsing, and execution logic
 =================================================================================
+=================================================================================
+PART:             Runner (interpreter)
+Written by:       NURSYAHIRAH AQILAH BINTI AINUL HISHAM
+Lectures Covered: 1,2,3,4,7,8
+Responsibility:   Read .asm file, convert each line into opcode + operand
+                   bytes, load into VirtualMachine memory, run, dump state
+=================================================================================
 */
 
 
@@ -24,6 +31,10 @@ Responsibility:   Implementing instruction set, opcode parsing, and execution lo
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <fstream>
+#include <sstream>
+#include <vector>
+using namespace std;
 
 // CLASS TEMPLATES (applied to custom stack structure)
 template <class T>
@@ -48,12 +59,12 @@ class VMStack : public BaseStack<signed char>
             for (int i = 0; i < STACK_MAX; i++) stackArray[i] = 0;
         }
 
-        // exception handling using throw std::overflow_error
+        // exception handling using throw overflow_error
         void push(signed char value, signed char &SI) override
         {
             if (SI >= STACK_MAX)
             {
-                throw std::overflow_error("VM Stack Overflow! Maximum stack capacity of 8 bytes exceeded.");
+                throw overflow_error("VM Stack Overflow! Maximum stack capacity of 8 bytes exceeded.");
             }
             stackArray[(int)SI] = value;
             SI++; // increment Stack Index register after push operation
@@ -65,7 +76,7 @@ class VMStack : public BaseStack<signed char>
             if (SI <= 0)
             {
                 // underflow triggers system crash according to project specs
-                std::cout << "System Error: Stack Underflow detected! Virtual Machine crashed." << std::endl;
+                cout << "System Error: Stack Underflow detected! Virtual Machine crashed." << endl;
                 exit(1);
             }
             SI--; // decrement Stack Index register before popping to point to top element
@@ -89,7 +100,7 @@ class Register
         // virtual function for runtime polymorphism
         virtual void printStatus() const
         {
-            std::cout << "Generic Register Value: " << (int)value << std::endl;
+            cout << "Generic Register Value: " << (int)value << endl;
         }
 };
 
@@ -97,18 +108,18 @@ class Register
 class GeneralRegister : public Register
 {
     private:
-        std::string registerName; // tracks register token identity (example: "R0")
+        string registerName; // tracks register token identity (example: "R0")
 
     public:
         GeneralRegister() : Register(), registerName("UNKNOWN") {}
-        GeneralRegister(std::string name) : Register(), registerName(name) {}
+        GeneralRegister(string name) : Register(), registerName(name) {}
 
-        std::string getName() const { return this->registerName; }
+        string getName() const { return this->registerName; }
 
         // override keyword used to achieve polymorphism (polymorphism #2)
         void printStatus() const override
         {
-            std::cout << registerName << " = " << (int)value << std::endl;
+            cout << registerName << " = " << (int)value << endl;
         }
 };
 
@@ -131,7 +142,7 @@ class Memory
         {
             if (address < 0 || address >= MAX_SIZE)
             {
-                throw std::out_of_range("Memory Access Error: Attempted to read outside valid range (0-63).");
+                throw out_of_range("Memory Access Error: Attempted to read outside valid range (0-63).");
             }
             return ram[address];
         }
@@ -140,7 +151,7 @@ class Memory
         {
             if (address < 0 || address >= MAX_SIZE)
             {
-                throw std::out_of_range("Memory Access Error: Attempted to write outside valid range (0-63).");
+                throw out_of_range("Memory Access Error: Attempted to write outside valid range (0-63).");
             }
             ram[address] = value;
         }
@@ -209,19 +220,19 @@ class FlagRegister
         // Display current flag status
         void displayFlags() const
         {
-            std::cout << "ZF=" << (zeroFlag ? "1" : "0") << " ";
-            std::cout << "CF=" << (carryFlag ? "1" : "0") << " ";
-            std::cout << "OF=" << (overflowFlag ? "1" : "0") << " ";
-            std::cout << "UF=" << (underflowFlag ? "1" : "0") << std::endl;
+            cout << "ZF=" << (zeroFlag ? "1" : "0") << " ";
+            cout << "CF=" << (carryFlag ? "1" : "0") << " ";
+            cout << "OF=" << (overflowFlag ? "1" : "0") << " ";
+            cout << "UF=" << (underflowFlag ? "1" : "0") << endl;
         }
 
         // Get flags as formatted string
-        std::string getFlagsString() const
+        string getFlagsString() const
         {
-            return std::to_string(zeroFlag ? 1 : 0) + "#" +
-                   std::to_string(carryFlag ? 1 : 0) + "#" +
-                   std::to_string(overflowFlag ? 1 : 0) + "#" +
-                   std::to_string(underflowFlag ? 1 : 0);
+            return to_string(zeroFlag ? 1 : 0) + "#" +
+                   to_string(carryFlag ? 1 : 0) + "#" +
+                   to_string(overflowFlag ? 1 : 0) + "#" +
+                   to_string(underflowFlag ? 1 : 0);
         }
 };
 
@@ -232,7 +243,7 @@ class VirtualMachine
         VMStack stack; // custom stack structure with push/pop and overflow/underflow handling
         GeneralRegister registers[4]; // 4 general-purpose registers (R0, R1, R2, R3)
         FlagRegister flags; // flag register for ZF, CF, OF, UF
-        
+
         int PC;
         signed char SI;
         bool isRunning;
@@ -259,11 +270,11 @@ class VirtualMachine
         {
             signed char destReg = memory.read(PC++);
             signed char srcReg = memory.read(PC++);
-            
+
             // Copy value from source to destination
             signed char valueToCopy = registers[srcReg].getValue();
             registers[destReg].setValue(valueToCopy);
-            flags.updateInputFlags(valueToCopy); 
+            flags.updateInputFlags(valueToCopy);
         }
         void executeSUB()
         {
@@ -294,7 +305,7 @@ class VirtualMachine
 
             // Hardware safety check: Prevent divide by zero crash
             if (val2 == 0) {
-                throw std::runtime_error("ALU Error: Division by zero detected!");
+                throw runtime_error("ALU Error: Division by zero detected!");
             }
             signed char result = val1 / val2;
             registers[destReg].setValue(result);
@@ -314,9 +325,9 @@ class VirtualMachine
 
     public:
         // Opcode definitions for instruction set
-        enum Opcodes { 
+        enum Opcodes {
             HLT = 0x00, LDI = 0x01, ADD = 0x02, PUSH = 0x03, POP = 0x04,
-            MOV = 0x05, SUB = 0x06, MUL = 0x07, DIV = 0x08 
+            MOV = 0x05, SUB = 0x06, MUL = 0x07, DIV = 0x08
         };
 
         VirtualMachine() : PC(0), SI(0), isRunning(false)
@@ -329,7 +340,7 @@ class VirtualMachine
         void loadProgram(const signed char* program, int size)
         {
             for (int i = 0; i < size; i++) memory.write(i, program[i]);
-            PC = 0; 
+            PC = 0;
         }// Main execution loop of the virtual machine
 
         void run()
@@ -349,16 +360,16 @@ class VirtualMachine
                     case SUB:  executeSUB();      break;
                     case MUL:  executeMUL();      break;
                     case DIV:  executeDIV();      break;
-                    default:   isRunning = false; break; 
+                    default:   isRunning = false; break;
                 }
             }
         }
         void printState() const
         {
-            std::cout << "=== VM State ===" << std::endl;
+            cout << "=== VM State ===" << endl;
             for (int i = 0; i < 4; i++) registers[i].printStatus();
             flags.displayFlags();
-            std::cout << "PC: " << PC << ", SI: " << (int)SI << std::endl;
+            cout << "PC: " << PC << ", SI: " << (int)SI << endl;
         }
 };
 
