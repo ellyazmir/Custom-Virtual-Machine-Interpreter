@@ -506,10 +506,9 @@ class FlagRegister
         /*  update flags based on arithmetic operation result
             result -result of arithmetic operation, operand1 -first operand, operand2 -second operand
         */
-        void updateArithmeticFlags(signed char result, signed char operand1, signed char operand2)
+        void updateArithmeticFlags(signed char result, int extendedResult)
         {
             zeroFlag = (result == 0);
-            int extendedResult = (int)operand1 + (int)operand2;
             carryFlag = (extendedResult > 127 || extendedResult < -128);    // exceeds 8-bit signed range
             overflowFlag = (result > 125);
             underflowFlag = (result < -125);
@@ -694,9 +693,10 @@ class VirtualMachine
             signed char srcReg = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
             signed char val2 = registers[srcReg].getValue();
-            signed char result = val1 + val2;
+            int extended = (int)val1 + (int)val2;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, val2);
+            flags.updateArithmeticFlags(result, extended);
         }// Stack operations with overflow/underflow handling
 
         void executeMOV()
@@ -715,9 +715,10 @@ class VirtualMachine
             signed char srcReg = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
             signed char val2 = registers[srcReg].getValue();
-            signed char result = val1 - val2;
+            int extended = (int)val1 - (int)val2;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, -val2); // -val2 for subtraction logic
+            flags.updateArithmeticFlags(result, extended);
         }
         void executeMUL()
         {
@@ -725,9 +726,10 @@ class VirtualMachine
             signed char srcReg = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
             signed char val2 = registers[srcReg].getValue();
-            signed char result = val1 * val2;
+            int extended = (int)val1 * (int)val2;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, val2);
+            flags.updateArithmeticFlags(result, extended);
         }
         void executeDIV()
         {
@@ -742,7 +744,7 @@ class VirtualMachine
             }
             signed char result = val1 / val2;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, val2);
+            flags.updateArithmeticFlags(result, (int)val1 / (int)val2);
         }
         void executePUSH()
         {
@@ -903,27 +905,30 @@ class VirtualMachine
             signed char destReg = memory.read(PC++);
             signed char imm = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
-            signed char result = val1 + imm;
+            int extended = (int)val1 + (int)imm;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, imm);
+            flags.updateArithmeticFlags(result, extended);
         }
         void executeSUBI()
         {
             signed char destReg = memory.read(PC++);
             signed char imm = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
-            signed char result = val1 - imm;
+            int extended = (int)val1 - (int)imm;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, -imm);
+            flags.updateArithmeticFlags(result, extended);
         }
         void executeMULI()
         {
             signed char destReg = memory.read(PC++);
             signed char imm = memory.read(PC++);
             signed char val1 = registers[destReg].getValue();
-            signed char result = val1 * imm;
+            int extended = (int)val1 * (int)imm;
+            signed char result = (signed char)extended;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, imm);
+            flags.updateArithmeticFlags(result, extended);
         }
         void executeDIVI()
         {
@@ -933,7 +938,7 @@ class VirtualMachine
             if (imm == 0) throw runtime_error("ALU Error: Division by zero detected!");
             signed char result = val1 / imm;
             registers[destReg].setValue(result);
-            flags.updateArithmeticFlags(result, val1, imm);
+            flags.updateArithmeticFlags(result, (int)val1 / (int)imm);
         }
 
         /* INPUT <DestReg> : reads & validates keyboard input.
@@ -982,6 +987,22 @@ class VirtualMachine
             }
         }
     public:
+        /*  These accessors let Instruction subclasses (aggregation - they use
+            a VirtualMachine& but do not own it) operate on registers/flags
+            without exposing the private members directly.
+            By - YUSOF (added to support polymorphic Instruction hierarchy)
+        */
+        signed char getRegisterValue(int idx) const { return registers[idx].getValue(); }
+        void setRegisterValue(int idx, signed char val) { registers[idx].setValue(val); }
+        void applyArithmeticFlags(signed char result, int extendedResult)
+        {
+            flags.updateArithmeticFlags(result, extendedResult);
+        }
+        void applyShiftFlags(signed char result, bool carryOut)
+        {
+            flags.updateShiftFlags(result, carryOut);
+        }
+
         /*  default: all VM components to initial state
                 - PC = 0, SI = 0, isRunning = false
                 - initialize 8 registers (R0-R7)
@@ -1366,6 +1387,150 @@ class VirtualMachine
             buffer[pos] = '\0';
         }
 
+};
+
+/*
+===========================================================================================
+PART:             Instruction Hierarchy 
+Written by:       MUHAMMAD YUSOF BIN SHAHILAN
+Responsibility:   Abstract Instruction base class + concrete subclasses (ADD, MUL,
+                   ROL, SHL shown here as the pattern; teammates extend the rest).
+===========================================================================================
+*/
+class Instruction
+{
+    private:
+        signed char operand1;
+        signed char operand2;
+
+    public:
+        Instruction(signed char op1, signed char op2) : operand1(op1), operand2(op2) {}
+        virtual ~Instruction() {}
+
+        signed char getOperand1() const { return operand1; }
+        signed char getOperand2() const { return operand2; }
+
+        virtual const char* name() const = 0;          // for logging/debugging
+        virtual void execute(VirtualMachine &vm) = 0;   // pure virtual - core polymorphism
+};
+
+// ADD Rdest, Rsrc  ->  Rdest = Rdest + Rsrc
+class AddInstruction : public Instruction
+{
+    public:
+        AddInstruction(signed char destReg, signed char srcReg)
+            : Instruction(destReg, srcReg) {}
+
+        const char* name() const override { return "ADD"; }
+
+        void execute(VirtualMachine &vm) override
+        {
+            signed char destReg = getOperand1();
+            signed char srcReg  = getOperand2();
+
+            signed char val1 = vm.getRegisterValue(destReg);
+            signed char val2 = vm.getRegisterValue(srcReg);
+
+            int extended = (int)val1 + (int)val2;
+            signed char result = (signed char)extended;
+
+            vm.setRegisterValue(destReg, result);
+            vm.applyArithmeticFlags(result, extended);
+        }
+};
+
+// MUL Rdest, Rsrc  ->  Rdest = Rdest * Rsrc
+class MulInstruction : public Instruction
+{
+    public:
+        MulInstruction(signed char destReg, signed char srcReg)
+            : Instruction(destReg, srcReg) {}
+
+        const char* name() const override { return "MUL"; }
+
+        void execute(VirtualMachine &vm) override
+        {
+            signed char destReg = getOperand1();
+            signed char srcReg  = getOperand2();
+
+            signed char val1 = vm.getRegisterValue(destReg);
+            signed char val2 = vm.getRegisterValue(srcReg);
+
+            int extended = (int)val1 * (int)val2;
+            signed char result = (signed char)extended;
+
+            vm.setRegisterValue(destReg, result);
+            vm.applyArithmeticFlags(result, extended);
+        }
+};
+
+// ROL Rdest, count  ->  rotate Rdest's bits left by count
+class RolInstruction : public Instruction
+{
+    public:
+        RolInstruction(signed char destReg, signed char count)
+            : Instruction(destReg, count) {}
+
+        const char* name() const override { return "ROL"; }
+
+        void execute(VirtualMachine &vm) override
+        {
+            signed char destReg = getOperand1();
+            int shiftBy = ((int)getOperand2()) % 8;
+            if (shiftBy < 0) shiftBy += 8;
+
+            unsigned char bits = (unsigned char)vm.getRegisterValue(destReg);
+            bool carryOut = false;
+            unsigned char result = bits;
+
+            if (shiftBy != 0)
+            {
+                carryOut = (bits & (0x80 >> (shiftBy - 1))) != 0;
+                result = (unsigned char)((bits << shiftBy) | (bits >> (8 - shiftBy)));
+            }
+
+            signed char finalValue = (signed char)result;
+            vm.setRegisterValue(destReg, finalValue);
+            vm.applyShiftFlags(finalValue, carryOut);
+        }
+};
+
+// SHL Rdest, count  ->  shift Rdest's bits left by count (zero-fill)
+class ShlInstruction : public Instruction
+{
+    public:
+        ShlInstruction(signed char destReg, signed char count)
+            : Instruction(destReg, count) {}
+
+        const char* name() const override { return "SHL"; }
+
+        void execute(VirtualMachine &vm) override
+        {
+            signed char destReg = getOperand1();
+            int shiftBy = (int)getOperand2();
+
+            unsigned char bits = (unsigned char)vm.getRegisterValue(destReg);
+            bool carryOut = false;
+            unsigned char result;
+
+            if (shiftBy >= 8 || shiftBy < 0)
+            {
+                result = 0;
+            }
+            else if (shiftBy == 0)
+            {
+                result = bits;
+            }
+            else
+            {
+                carryOut = (bits & (0x80 >> (shiftBy - 1))) != 0;
+                result = (unsigned char)(bits << shiftBy);
+            }
+
+            signed char finalValue = (signed char)result;
+            vm.setRegisterValue(destReg, finalValue);
+            vm.applyShiftFlags(finalValue, carryOut);
+        }
 };
 
 /*
@@ -1822,3 +1987,5 @@ int main()
 
         return 0;
     }
+
+
