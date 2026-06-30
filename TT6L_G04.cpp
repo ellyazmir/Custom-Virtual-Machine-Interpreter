@@ -528,8 +528,14 @@ class FlagRegister
 
         /*  update flags for shift/rotate operations
             result -result of shift/rotate operation
+            carryOut -the bit that was shifted out (for CF)
         */
-        void updateShiftFlags(signed char result) {zeroFlag = (result == 0);} // only ZF is affected by shift
+        void updateShiftFlags(signed char result, bool carryOut = false)
+        {
+            zeroFlag = (result == 0);
+            carryFlag = carryOut;
+            // OF and UF are not affected by shift/rotate
+        }
 
         /*  update flags for increment/decrement operations
             result -result of increment/decrement operation, original -original value before operation
@@ -542,6 +548,34 @@ class FlagRegister
             // carry on wrap-around
             carryFlag = ((original == 127 && result == -128) ||
                         (original == -128 && result == 127));
+        }
+
+        void updateDecrementFlags(signed char result, signed char original)
+        {
+            zeroFlag = (result == 0);
+            overflowFlag = (result < -128);
+            underflowFlag = (result < -125);
+            carryFlag = ((original == -128 && result == 127));
+        }
+
+        /*  flags specifically for ROL operation */
+        void updateROLFlags(signed char result, int shiftCount)
+        {
+            zeroFlag = (result == 0);
+            if (shiftCount == 1) {
+                carryFlag = (result & 0x80) != 0;
+            }
+            // OF and UF not affected
+        }
+
+        /*  flags specifically for ROR operation */
+        void updateRORFlags(signed char result, int shiftCount)
+        {
+            zeroFlag = (result == 0);
+            if (shiftCount == 1) {
+                carryFlag = (result & 0x01) != 0;
+            }
+            // OF and UF not affected
         }
 
         // display all flag values in readable format
@@ -559,17 +593,48 @@ class FlagRegister
         */
         void getFlagsString(char* buffer, int bufferSize) const
         {
-            if (buffer && bufferSize >= 16)
-            {
-                snprintf(buffer, bufferSize, "%d#%d#%d#%d#",
-                         overflowFlag ? 1 : 0,
-                         underflowFlag ? 1 : 0,
-                         carryFlag ? 1 : 0,
-                         zeroFlag ? 1 : 0);
+            if (!buffer || bufferSize < 1) return;
+
+            char temp[64];
+            int pos = 0;
+
+            // OF
+            temp[pos++] = 'O';
+            temp[pos++] = 'F';
+            temp[pos++] = '#';
+            temp[pos++] = overflowFlag ? '1' : '0';
+            temp[pos++] = '#';
+
+            // UF
+            temp[pos++] = 'U';
+            temp[pos++] = 'F';
+            temp[pos++] = '#';
+            temp[pos++] = underflowFlag ? '1' : '0';
+            temp[pos++] = '#';
+
+            // CF
+            temp[pos++] = 'C';
+            temp[pos++] = 'F';
+            temp[pos++] = '#';
+            temp[pos++] = carryFlag ? '1' : '0';
+            temp[pos++] = '#';
+
+            // ZF
+            temp[pos++] = 'Z';
+            temp[pos++] = 'F';
+            temp[pos++] = '#';
+            temp[pos++] = zeroFlag ? '1' : '0';
+            temp[pos++] = '#';
+
+            temp[pos] = '\0';
+
+            int copyLen = (pos < bufferSize) ? pos : (bufferSize - 1);
+            for (int i = 0; i < copyLen; i++) {
+                buffer[i] = temp[i];
             }
+            buffer[copyLen] = '\0';
         }
 
-        // check if any flag is set
         bool anyFlagSet() const
         {
             return zeroFlag || carryFlag || overflowFlag || underflowFlag; // true = at least one flag true
@@ -706,7 +771,7 @@ class VirtualMachine
             signed char original = registers[destReg].getValue();
             signed char result = original - 1;
             registers[destReg].setValue(result);
-            flags.updateIncrementFlags(result, original);
+            flags.updateDecrementFlags(result, original);
         }
 
         void executeLOAD()
@@ -740,69 +805,97 @@ class VirtualMachine
         void executeROL()
         {
             signed char destReg = memory.read(PC++);
-            signed char count   = memory.read(PC++);
+            signed char count = memory.read(PC++);
 
             unsigned char bits = (unsigned char)registers[destReg].getValue();
             int shiftBy = ((int)count) % 8;
             if (shiftBy < 0) shiftBy += 8;
 
+            bool carryOut = false;
             unsigned char result = bits;
-            if (shiftBy != 0) result = (unsigned char)((bits << shiftBy) | (bits >> (8 - shiftBy)));
+
+            if (shiftBy != 0) {
+                carryOut = (bits & (0x80 >> (shiftBy - 1))) != 0;
+                result = (unsigned char)((bits << shiftBy) | (bits >> (8 - shiftBy)));
+            }
 
             signed char finalValue = (signed char)result;
             registers[destReg].setValue(finalValue);
-            flags.updateShiftFlags(finalValue);
+            flags.updateShiftFlags(finalValue, carryOut);
         }
 
         void executeROR()
         {
             signed char destReg = memory.read(PC++);
-            signed char count   = memory.read(PC++);
+            signed char count = memory.read(PC++);
 
             unsigned char bits = (unsigned char)registers[destReg].getValue();
             int shiftBy = ((int)count) % 8;
             if (shiftBy < 0) shiftBy += 8;
 
+            bool carryOut = false;
             unsigned char result = bits;
-            if (shiftBy != 0) result = (unsigned char)((bits >> shiftBy) | (bits << (8 - shiftBy)));
+
+            if (shiftBy != 0) {
+                carryOut = (bits & (0x01 << (shiftBy - 1))) != 0;
+                result = (unsigned char)((bits >> shiftBy) | (bits << (8 - shiftBy)));
+            }
 
             signed char finalValue = (signed char)result;
             registers[destReg].setValue(finalValue);
-            flags.updateShiftFlags(finalValue);
+            flags.updateShiftFlags(finalValue, carryOut);
         }
 
         void executeSHL()
         {
             signed char destReg = memory.read(PC++);
-            signed char count   = memory.read(PC++);
+            signed char count = memory.read(PC++);
 
             unsigned char bits = (unsigned char)registers[destReg].getValue();
             int shiftBy = (int)count;
+            bool carryOut = false;
 
             unsigned char result;
-            if (shiftBy >= 8 || shiftBy < 0) result = 0;
-            else result = (unsigned char)(bits << shiftBy);
+            if (shiftBy >= 8 || shiftBy < 0) {
+                result = 0;
+                carryOut = false;
+            } else if (shiftBy == 0) {
+                result = bits;
+                carryOut = false;
+            } else {
+                carryOut = (bits & (0x80 >> (shiftBy - 1))) != 0;
+                result = (unsigned char)(bits << shiftBy);
+            }
 
             signed char finalValue = (signed char)result;
             registers[destReg].setValue(finalValue);
-            flags.updateShiftFlags(finalValue);
+            flags.updateShiftFlags(finalValue, carryOut);
         }
 
         void executeSHR()
         {
             signed char destReg = memory.read(PC++);
-            signed char count   = memory.read(PC++);
+            signed char count = memory.read(PC++);
 
             unsigned char bits = (unsigned char)registers[destReg].getValue();
             int shiftBy = (int)count;
+            bool carryOut = false;
 
             unsigned char result;
-            if (shiftBy >= 8 || shiftBy < 0) result = 0;
-            else result = (unsigned char)(bits >> shiftBy);
+            if (shiftBy >= 8 || shiftBy < 0) {
+                result = 0;
+                carryOut = false;
+            } else if (shiftBy == 0) {
+                result = bits;
+                carryOut = false;
+            } else {
+                carryOut = (bits & (0x01 << (shiftBy - 1))) != 0;
+                result = (unsigned char)(bits >> shiftBy);
+            }
 
             signed char finalValue = (signed char)result;
             registers[destReg].setValue(finalValue);
-            flags.updateShiftFlags(finalValue);
+            flags.updateShiftFlags(finalValue, carryOut);
         }
 
         void executeADDI()
@@ -880,12 +973,12 @@ class VirtualMachine
 
             switch (flagCode)
             {
-                case 0: flags.resetFlag('O'); break;
-                case 1: flags.resetFlag('U'); break;
-                case 2: flags.resetFlag('C'); break;
-                case 3: flags.resetFlag('Z'); break;
+                case 0: flags.resetFlag('O'); break;   // Reset Overflow Flag
+                case 1: flags.resetFlag('U'); break;   // Reset Underflow Flag
+                case 2: flags.resetFlag('C'); break;   // Reset Carry Flag
+                case 3: flags.resetFlag('Z'); break;   // Reset Zero Flag
                 default:
-                    throw invalid_argument("Unknown flag code for RESET instruction.");
+                    throw "Unknown flag code for RESET instruction.";
             }
         }
     public:
@@ -1183,75 +1276,94 @@ class VirtualMachine
         /*  get VM state in required output format for file export
             buffer -character buffer to store formatted output, bufferSize -size of buffer
         */
+
         void getFormattedState(char* buffer, int bufferSize) const
         {
             if (!buffer || bufferSize < 2048)
             {
-                if (buffer && bufferSize > 0) buffer[0] = '\0'; // buffer too small or invalid
-
+                if (buffer && bufferSize > 0) buffer[0] = '\0';
                 return;
             }
 
             int pos = 0;
 
-            pos += snprintf(buffer + pos, bufferSize - pos, "#Begin#\n");
-            pos += snprintf(buffer + pos, bufferSize - pos, "#Registers#\n");
+            // Helper lambda to append to buffer
+            auto append = [&](const char* str) {
+                int len = 0;
+                while (str[len] != '\0') len++;
+                for (int i = 0; i < len && pos < bufferSize - 1; i++) {
+                    buffer[pos++] = str[i];
+                }
+            };
 
-            for (int i = 0; i < 8; i++) // print all 8 registers with 4-digit format
-            {
+            // Helper to append integer with formatting
+            auto appendInt = [&](int value, int width) {
+                if (value < 0) {
+                    append("-");
+                    value = -value;
+                    width--;
+                }
+                // Count digits
+                int digits = 0;
+                int temp = value;
+                if (temp == 0) digits = 1;
+                else { while (temp > 0) { digits++; temp /= 10; } }
+
+                int padding = width - digits;
+                for (int i = 0; i < padding && pos < bufferSize - 1; i++) {
+                    buffer[pos++] = '0';
+                }
+
+                if (value == 0) {
+                    buffer[pos++] = '0';
+                } else {
+                    char tempBuf[16];
+                    int idx = 0;
+                    temp = value;
+                    while (temp > 0) {
+                        tempBuf[idx++] = '0' + (temp % 10);
+                        temp /= 10;
+                    }
+                    for (int i = idx - 1; i >= 0 && pos < bufferSize - 1; i--) {
+                        buffer[pos++] = tempBuf[i];
+                    }
+                }
+            };
+
+            append("#Begin#\n");
+            append("#Registers#\n");
+
+            for (int i = 0; i < 8; i++) {
                 int val = registers[i].getValue();
-
-                // handle negative values
-                if (val < 0)
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "-%03d", -val);
-                }
-                else
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "%04d", val);
-                }
-
-                // add # separator (except after last register)
-                if (i < 7)
-                    pos += snprintf(buffer + pos, bufferSize - pos, "#");
+                appendInt(val, 4);
+                if (i < 7) append("#");
             }
-            pos += snprintf(buffer + pos, bufferSize - pos, "#\n");
-            pos += snprintf(buffer + pos, bufferSize - pos, "#Flags#\n");
-            pos += snprintf(buffer + pos, bufferSize - pos,
-                            "OF#%d#UF#%d#CF#%d#ZF#%d#\n",
-                            flags.getOverflowFlag() ? 1 : 0,
-                            flags.getUnderflowFlag() ? 1 : 0,
-                            flags.getCarryFlag() ? 1 : 0,
-                            flags.getZeroFlag() ? 1 : 0);
+            append("#\n");
 
-            pos += snprintf(buffer + pos, bufferSize - pos, "#PC#\n");
-            pos += snprintf(buffer + pos, bufferSize - pos, "%04d#\n", PC);
-            pos += snprintf(buffer + pos, bufferSize - pos, "#Memory#\n");
+            append("#Flags#\n");
+            // Use getFlagsString for flags
+            char flagBuf[64];
+            flags.getFlagsString(flagBuf, 64);
+            append(flagBuf);
+            append("\n");
 
-            for (int i = 0; i < memory.getSize(); i++)
-            {
+            append("#PC#\n");
+            appendInt(PC, 4);
+            append("#\n");
+
+            append("#Memory#\n");
+            for (int i = 0; i < memory.getSize(); i++) {
                 int val = memory.read(i);
-
-                if (val < 0)
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "-%03d", -val);
-                }
-                else
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "%04d", val);
-                }
-
-                if ((i + 1) % 8 == 0)
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "#\n");
-                }
-                else
-                {
-                    pos += snprintf(buffer + pos, bufferSize - pos, "#");
+                appendInt(val, 4);
+                if ((i + 1) % 8 == 0) {
+                    append("#\n");
+                } else {
+                    append("#");
                 }
             }
 
-            pos += snprintf(buffer + pos, bufferSize - pos, "#End#\n");
+            append("#End#\n");
+            buffer[pos] = '\0';
         }
 
 };
