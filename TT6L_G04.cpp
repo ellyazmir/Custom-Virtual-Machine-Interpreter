@@ -1197,6 +1197,7 @@ class VirtualMachine
                     // halt
                     case HLT:
                         isRunning = false;
+                        PC--;
                         break;
 
                     // yusof
@@ -1391,7 +1392,7 @@ class VirtualMachine
 
 /*
 ===========================================================================================
-PART:             Instruction Hierarchy 
+PART:             Instruction Hierarchy
 Written by:       MUHAMMAD YUSOF BIN SHAHILAN
 Responsibility:   Abstract Instruction base class + concrete subclasses (ADD, MUL,
                    ROL, SHL shown here as the pattern; teammates extend the rest).
@@ -1945,7 +1946,13 @@ class Runner
         void execute()
         {
             int size = program.size();
-            signed char* bytes = new signed char[size > 0 ? size : 1];
+            if (size == 0)
+            {
+                cout << "Error: No instructions to execute." << endl;
+                return;
+            }
+
+            signed char* bytes = new signed char[size];
             for (int i = 0; i < size; i++) bytes[i] = program[i];
 
             vm.loadProgram(bytes, size);
