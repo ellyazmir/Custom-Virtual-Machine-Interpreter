@@ -47,8 +47,61 @@ Responsibility:   Read .asm file, convert each line into opcode + operand
 #include <stdexcept>    // exception classes: overflow_error, underflow_error, out_of_range
 #include <cstring>      // c-string functions (strcpy, strlen, strncpy)
 #include <cstdlib>      // atoi, exit, NULL
+#include <string>
+#include <fstream>
+#include <sstream>
 
 using namespace std;
+
+/*custom dynamic array instead of using vector
+    by:Nursyahirah Aqilah
+*/
+template <class T>
+class DynamicArray
+{
+    private:
+        T*  data;
+        int capacity;
+        int length;
+
+        void resize()
+        {
+            int newCap   = capacity * 2;
+            T*  newData  = new T[newCap];
+            for (int i = 0; i < length; i++) newData[i] = data[i];
+            delete[] data;
+            data     = newData;
+            capacity = newCap;
+        }
+
+    public:
+        DynamicArray() : capacity(8), length(0)
+        {
+            data = new T[capacity];
+        }
+
+        ~DynamicArray() { delete[] data; }
+
+        void push_back(const T &val)
+        {
+            if (length >= capacity) resize();
+            data[length++] = val;
+        }
+
+        T& operator[](int idx)       { return data[idx]; }
+        const T& operator[](int idx) const { return data[idx]; }
+        int size() const { return length; }
+        bool empty() const { return length == 0; }
+
+        void clear()
+        {
+            delete[] data;
+            capacity = 8;
+            length   = 0;
+            data     = new T[capacity];
+        }
+};
+
 
 
 /*  To abstract base class for stack data structure
@@ -193,7 +246,7 @@ class GeneralRegister : public Register
     public:
 
         GeneralRegister() : Register() {strcpy(registerName, "UNKNOWN");} // default: name "UNKNOWN", value 0
-        
+
         /*  parameterized :initialize with given name, value 0
             parameter     :name (c-string name for the register)
         */
@@ -206,14 +259,14 @@ class GeneralRegister : public Register
                 registerName[19] = '\0';    // null terminate
             }
         }
-        
+
         // copy: deep copy of another GeneralRegister
         GeneralRegister(const GeneralRegister& other) : Register()
         {
             this->value = other.value;
             strcpy(registerName, other.registerName);
         }
-        
+
         // deep copy assignment
         GeneralRegister& operator=(const GeneralRegister& other)
         {
@@ -227,7 +280,7 @@ class GeneralRegister : public Register
 
         ~GeneralRegister() {} // clean up (no dynamic memory, but included for completeness)
 
-        
+
         //  get the register name
         const char* getName() const {return registerName;}
 
@@ -245,8 +298,8 @@ class GeneralRegister : public Register
                 strncpy(registerName, name, 19);
                 registerName[19] = '\0';
             }
-        }        
-        
+        }
+
         /*  display register name & value
             overrides base class virtual function (POLYMORPHISM #1)
         */
@@ -294,7 +347,7 @@ class Memory
         Memory(const Memory& other)
         {
             for (int i = 0; i < MAX_SIZE; i++) { ram[i] = other.ram[i]; }
-        }   
+        }
 
         // deep copy assignment
         Memory& operator=(const Memory& other)
@@ -307,8 +360,8 @@ class Memory
         }
 
         ~Memory() {} // clean up (no dynamic memory, but included for completeness)
-    
-    
+
+
         /*  read a byte from memory at specified address
             address -memory address (0-63)
         */
@@ -351,7 +404,7 @@ class Memory
             {
                 throw out_of_range("Invalid memory region");
             }
-            
+
             for (int i = start; i <= end; i++) { ram[i] = 0; }
         }
 
@@ -533,7 +586,7 @@ class FlagRegister
     COMPOSITION: owns Memory, VMStack, FlagRegister
     AGGREGATION: contains array of GeneralRegister
     coordinates: PC, SI, & execution flow
-    By: ELLY MAZLIN     (Core structure, constructors, getters, 
+    By: ELLY MAZLIN     (Core structure, constructors, getters,
                         reset, loadProgram, formatted output, printState)
         MUHAMMAD YUSOF  (ALU instruction methods:
                         executeLDI, executeADD, executeMOV, executeSUB, executeMUL,
@@ -541,7 +594,7 @@ class FlagRegister
                         executeLOAD, executeSTORE, executeROL, executeROR,
                         executeSHL, executeSHR)
         AMIRA SOFIA     (RESET instruction - executeRESET)
-        NURSYAHIRAH     (I/O instructions: executeINPUT, executeDISPLAY, file I/O)            
+        NURSYAHIRAH     (I/O instructions: executeINPUT, executeDISPLAY, file I/O)
 */
 class VirtualMachine
 {
@@ -638,6 +691,203 @@ class VirtualMachine
             registers[regIndex].setValue(stack.pop(SI));
         }// Additional instruction implementations (SUB, MUL, DIV, etc.) can be added here with appropriate flag updates
 
+        void executeINC()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char original = registers[destReg].getValue();
+            signed char result = original + 1;
+            registers[destReg].setValue(result);
+            flags.updateIncrementFlags(result, original);
+        }
+
+        void executeDEC()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char original = registers[destReg].getValue();
+            signed char result = original - 1;
+            registers[destReg].setValue(result);
+            flags.updateIncrementFlags(result, original);
+        }
+
+        void executeLOAD()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char mode    = memory.read(PC++);
+            signed char operand = memory.read(PC++);
+
+            int address;
+            if (mode == 1) address = (int)registers[(int)operand].getValue();
+            else address = (int)operand;
+
+            signed char value = memory.read(address);
+            registers[destReg].setValue(value);
+            flags.updateInputFlags(value);
+        }
+
+        void executeSTORE()
+        {
+            signed char mode    = memory.read(PC++);
+            signed char operand = memory.read(PC++);
+            signed char srcReg  = memory.read(PC++);
+
+            int address;
+            if (mode == 1) address = (int)registers[(int)operand].getValue();
+            else address = (int)operand;
+
+            memory.write(address, registers[srcReg].getValue());
+        }
+
+        void executeROL()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char count   = memory.read(PC++);
+
+            unsigned char bits = (unsigned char)registers[destReg].getValue();
+            int shiftBy = ((int)count) % 8;
+            if (shiftBy < 0) shiftBy += 8;
+
+            unsigned char result = bits;
+            if (shiftBy != 0) result = (unsigned char)((bits << shiftBy) | (bits >> (8 - shiftBy)));
+
+            signed char finalValue = (signed char)result;
+            registers[destReg].setValue(finalValue);
+            flags.updateShiftFlags(finalValue);
+        }
+
+        void executeROR()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char count   = memory.read(PC++);
+
+            unsigned char bits = (unsigned char)registers[destReg].getValue();
+            int shiftBy = ((int)count) % 8;
+            if (shiftBy < 0) shiftBy += 8;
+
+            unsigned char result = bits;
+            if (shiftBy != 0) result = (unsigned char)((bits >> shiftBy) | (bits << (8 - shiftBy)));
+
+            signed char finalValue = (signed char)result;
+            registers[destReg].setValue(finalValue);
+            flags.updateShiftFlags(finalValue);
+        }
+
+        void executeSHL()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char count   = memory.read(PC++);
+
+            unsigned char bits = (unsigned char)registers[destReg].getValue();
+            int shiftBy = (int)count;
+
+            unsigned char result;
+            if (shiftBy >= 8 || shiftBy < 0) result = 0;
+            else result = (unsigned char)(bits << shiftBy);
+
+            signed char finalValue = (signed char)result;
+            registers[destReg].setValue(finalValue);
+            flags.updateShiftFlags(finalValue);
+        }
+
+        void executeSHR()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char count   = memory.read(PC++);
+
+            unsigned char bits = (unsigned char)registers[destReg].getValue();
+            int shiftBy = (int)count;
+
+            unsigned char result;
+            if (shiftBy >= 8 || shiftBy < 0) result = 0;
+            else result = (unsigned char)(bits >> shiftBy);
+
+            signed char finalValue = (signed char)result;
+            registers[destReg].setValue(finalValue);
+            flags.updateShiftFlags(finalValue);
+        }
+
+        void executeADDI()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char imm = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char result = val1 + imm;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, imm);
+        }
+        void executeSUBI()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char imm = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char result = val1 - imm;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, -imm);
+        }
+        void executeMULI()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char imm = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            signed char result = val1 * imm;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, imm);
+        }
+        void executeDIVI()
+        {
+            signed char destReg = memory.read(PC++);
+            signed char imm = memory.read(PC++);
+            signed char val1 = registers[destReg].getValue();
+            if (imm == 0) throw runtime_error("ALU Error: Division by zero detected!");
+            signed char result = val1 / imm;
+            registers[destReg].setValue(result);
+            flags.updateArithmeticFlags(result, val1, imm);
+        }
+
+        /* INPUT <DestReg> : reads & validates keyboard input.
+        DISPLAY <SrcReg> : prints register's value to terminal
+        By: NURSYAHIRAH */
+        void executeINPUT()
+        {
+            signed char destReg = memory.read(PC++);
+
+            cout << endl << "?";
+            int rawInput;
+            cin >> rawInput;
+
+            while (cin.fail() || rawInput < -128 || rawInput > 127)
+            {
+                cin.clear();
+                cin.ignore(10000, '\n');
+                cout << "Error: Please enter a value between -128 and 127." << endl;
+                cout << "?";
+                cin >> rawInput;
+            }
+
+            signed char value = (signed char)rawInput;
+            registers[destReg].setValue(value);
+            flags.updateInputFlags(value);
+        }
+
+        void executeDISPLAY()
+        {
+            signed char srcReg = memory.read(PC++);
+            cout << (int)registers[srcReg].getValue() << endl;
+        }
+
+        void executeRESET()
+        {
+            signed char flagCode = memory.read(PC++);
+
+            switch (flagCode)
+            {
+                case 0: flags.resetFlag('O'); break;
+                case 1: flags.resetFlag('U'); break;
+                case 2: flags.resetFlag('C'); break;
+                case 3: flags.resetFlag('Z'); break;
+                default:
+                    throw invalid_argument("Unknown flag code for RESET instruction.");
+            }
+        }
     public:
         /*  default: all VM components to initial state
                 - PC = 0, SI = 0, isRunning = false
@@ -654,7 +904,7 @@ class VirtualMachine
             registers[5] = GeneralRegister("R5");
             registers[6] = GeneralRegister("R6");
             registers[7] = GeneralRegister("R7");
-        }        
+        }
 
         // copy: deep copy of another VirtualMachine
         VirtualMachine(const VirtualMachine& other)
@@ -675,15 +925,15 @@ class VirtualMachine
                 PC     = other.PC;
                 SI     = other.SI;
                 isRunning = other.isRunning;
-                
+
                 for (int i = 0; i < 8; i++) { registers[i] = other.registers[i]; }
             }
             return *this;
         }
 
         ~VirtualMachine() {} // clean up (no dynamic memory, but included for completeness)
-        
-        
+
+
         /*  SECTION getter methods (other team members to access components)
             :To provide controlled access to private components
         */
@@ -750,7 +1000,7 @@ class VirtualMachine
 
             for (int i = 0; i < 8; i++) { registers[i].setValue(0); }
         }
-        
+
         /*  load a program (opcodes) into memory
             program -pointer to signed char array, size -number of bytes in program
         */
@@ -762,7 +1012,7 @@ class VirtualMachine
             }
 
             for (int i = 0; i < size; i++) { memory.write(i, program[i]); }
-        
+
             PC = 0;
             isRunning = false;
         }
@@ -776,12 +1026,12 @@ class VirtualMachine
             {
                 throw out_of_range("Program size exceeds memory capacity (64 bytes)");
             }
-        
+
             for (int i = 0; i < size; i++) { memory.write(i, (signed char)program[i]); }
 
             PC = 0;
             isRunning = false;
-        }        
+        }
 
         /*  execute the loaded program
                 - FETCH:   read opcode from memory[PC]
@@ -817,7 +1067,11 @@ class VirtualMachine
                 SHR = 0x10,      // shift right
                 INPUT = 0x11,    // input from keyboard
                 DISPLAY = 0x12,  // display to screen
-                RESET = 0x13     // reset flag
+                RESET = 0x13,     // reset flag
+                ADDI = 0x14,     // add register with immediate number
+                SUBI = 0x15,     // subtract register with immediate number
+                MULI = 0x16,     // multiply register with immediate number
+                DIVI = 0x17,      // divide register with immediate number
             };
 
             while (isRunning)
@@ -832,62 +1086,74 @@ class VirtualMachine
                         break;
 
                     // yusof
-                    case LDI:
+                    case LDI: executeLDI();
                         break;
 
-                    case ADD:
+                    case ADD: executeADD();
                         break;
 
-                    case PUSH:
+                    case PUSH: executePUSH();
                         break;
 
-                    case POP:
+                    case POP: executePOP();
                         break;
 
-                    case MOV:
+                    case MOV: executeMOV();
                         break;
 
-                    case SUB:
+                    case SUB: executeSUB();
                         break;
 
-                    case MUL:
+                    case MUL: executeMUL();
                         break;
 
-                    case DIV:
+                    case DIV: executeDIV();
                         break;
 
-                    case INC:
+                    case INC: executeINC();
                         break;
 
-                    case DEC:
+                    case DEC: executeDEC();
                         break;
 
-                    case LOAD:
+                    case LOAD:executeLOAD();
                         break;
 
-                    case STORE:
+                    case STORE: executeSTORE();
                         break;
 
-                    case ROL:
+                    case ROL: executeROL();
                         break;
 
-                    case ROR:
+                    case ROR: executeROR();
                         break;
 
-                    case SHL:
+                    case SHL: executeSHL();
                         break;
 
-                    case SHR:
+                    case SHR: executeSHR();
                         break;
 
                     // syahirah
-                    case INPUT:
+                    case INPUT: executeINPUT();
                         break;
 
-                    case DISPLAY:
+                    case DISPLAY: executeDISPLAY();
                         break;
 
-                    case RESET:
+                    case RESET: executeRESET();
+                        break;
+
+                    case ADDI: executeADDI();
+                        break;
+
+                    case SUBI: executeSUBI();
+                        break;
+
+                    case MULI: executeMULI();
+                        break;
+
+                    case DIVI: executeDIVI();
                         break;
 
                     default:
@@ -904,12 +1170,12 @@ class VirtualMachine
         {
             cout << "=== Virtual Machine State ===" << endl;
             cout << "Registers:" << endl;
-        
+
             for (int i = 0; i < 8; i++) { registers[i].printStatus(); }
-        
+
             cout << "Flags: ";
             flags.displayFlags();
-            
+
             cout << "PC: " << PC << ", SI: " << (int)SI << endl;
             cout << "==============================" << endl;
         }
@@ -973,7 +1239,7 @@ class VirtualMachine
                 else
                 {
                     pos += snprintf(buffer + pos, bufferSize - pos, "%04d", val);
-                }   
+                }
 
                 if ((i + 1) % 8 == 0)
                 {
@@ -990,9 +1256,457 @@ class VirtualMachine
 
 };
 
-int main()
-{
-   //goodluck gng
+/*
+===========================================================================================
+PART:             Runner (Assembler / Interpreter front-end)
+Written by:       NURSYAHIRAH AQILAH BINTI AINUL HISHAM
+Responsibility:   - Reads the .asm text file line by line into a DynamicArray<string>
+                     (custom dynamic array, no STL vector)
+                   - Detects empty lines (ignored) and multiple instructions on one
+                     line (error + exit)
+                   - Converts each assembly line into opcode + operand bytes
+                     ("assembling") and loads the resulting byte stream into the
+                     VirtualMachine's Memory via loadProgram()
+                   - Runs the VirtualMachine and dumps the final state to the
+                     terminal in the exact required "#Begin# ... #End#" format
+===========================================================================================
+*/
 
-    return 0;
-}
+class Runner
+{
+    private:
+        VirtualMachine vm;
+        DynamicArray<string> sourceLines;  //raw lines to read from .asm file
+        DynamicArray<signed char> program; // assembled opcode/operand byte stream
+
+        static string trim(const string &s)
+        {
+            int start = 0;
+            int end = (int)s.size() -1;
+            while(start <= end && isspace((unsigned char)s[start]))
+                start ++;
+            while(end >= start && isspace((unsigned char)s[end]))
+                end --;
+            if(end<start)
+                return "";
+            return s.substr(start, end - start +1);
+        }
+
+        static string toUpper(const string &s)
+        {
+            string result = s;
+            for(size_t i=0; i < result.size(); i++)
+                result[i] = (char)toupper((unsigned char)result[i]);
+            return result;
+        }
+
+        static string stripBrackets(const string &s, bool &hadBrackets)
+            {
+                string t = trim(s);
+                hadBrackets = false;
+                if (t.size() >= 2 && t.front() == '[' && t.back() == ']')
+                {
+                    hadBrackets = true;
+                    return trim(t.substr(1, t.size() - 2));
+                }
+                return t;
+            }
+
+        static bool isRegisterToken(const string &s)
+        {
+            string t = toUpper(trim(s));
+            if (t.size() != 2) return false;
+            if (t[0] != 'R') return false;
+            if (t[1] < '0' || t[1] > '7') return false;
+            return true;
+        }
+
+        static int registerIndex(const string &s)
+        {
+            string t = toUpper(trim(s));
+            return t[1] - '0';
+        }
+
+        static bool isNumberToken(const string &s)
+        {
+            string t = trim(s);
+            if (t.empty()) return false;
+            size_t i = 0;
+            if (t[0] == '+' || t[0] == '-') i = 1;
+            if (i >= t.size()) return false;
+            for (; i < t.size(); i++)
+            {
+                if (!isdigit((unsigned char)t[i])) return false;
+            }
+            return true;
+        }
+
+        static int splitOperands(const string &operandText, string &op1, string &op2)
+        {
+            string t = trim(operandText);
+            if (t.empty()) return 0;
+
+            int commaPos = -1;
+            for (size_t i = 0; i < t.size(); i++)
+            {
+                if (t[i] == ',') { commaPos = (int)i; break; }
+            }
+
+            if (commaPos == -1)
+            {
+                op1 = trim(t);
+                return 1;
+            }
+
+            op1 = trim(t.substr(0, commaPos));
+            op2 = trim(t.substr(commaPos + 1));
+            return 2;
+        }
+
+        static void resolveAddressOperand(const string &operand, signed char &mode, signed char &value)
+        {
+            bool hadBrackets = false;
+            string inner = stripBrackets(operand, hadBrackets);
+
+            if (isRegisterToken(inner))
+            {
+                mode = 1;
+                value = (signed char)registerIndex(inner);
+            }
+            else if (isNumberToken(inner))
+            {
+                mode = 0;
+                value = (signed char)atoi(inner.c_str());
+            }
+            else
+            {
+                throw invalid_argument("Invalid address/register operand: '" + operand + "'");
+            }
+        }
+
+        static bool isMnemonic(const string &token)
+        {
+            string t = toUpper(trim(token));
+            const char* known[] = {
+                "HLT","MOV","ADD","SUB","MUL","DIV","INC","DEC","ROL","ROR","SHL","SHR","LOAD","STORE","PUSH","POP","INPUT","DISPLAY","RESET", "LDI", "SUBI", "ADDI", "MULI", "DIVI"
+            };
+            for (int i = 0; i < sizeof(known)/sizeof(known[0]); i++)
+            {
+                if (t == known[i]) return true;
+            }
+            return false;
+        }
+
+        void assembleLine(const string &rawLine, int lineNumber)
+        {
+            string line = trim(rawLine);
+
+            size_t spacePos = line.find_first_of(" \t");
+            string mnemonic = (spacePos == string::npos) ? line : line.substr(0, spacePos);
+            string rest = (spacePos == string::npos) ? "" : line.substr(spacePos + 1);
+            mnemonic = toUpper(trim(mnemonic));
+
+            {
+                int mnemonicCount = isMnemonic(mnemonic) ? 1 : 0;
+                string tmp = rest;
+                for (size_t i = 0; i < tmp.size(); i++) { if (tmp[i] == ',') tmp[i] = ' '; }
+                stringstream ss(tmp);
+                string tok;
+                while (ss >> tok)
+                {
+                    if (isMnemonic(tok)) mnemonicCount++;
+                }
+                if (mnemonicCount > 1)
+                {
+                    cout << "Assembler Error (line " << lineNumber
+                         << "): more than one instruction found on a single line." << endl;
+                    exit(1);
+                }
+            }
+
+            string op1, op2;
+            int opCount = splitOperands(rest, op1, op2);
+
+            if (mnemonic == "HLT")
+            {
+                program.push_back((signed char)0x00);
+            }
+            else if (mnemonic == "LDI")
+            {
+                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                    throw invalid_argument("LDI requires: LDI Rn, immediate");
+
+                program.push_back(0x01);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+            }
+            else if (mnemonic == "MOV")
+            {
+                if (opCount != 2 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument("MOV requires a destination register and a source operand.");
+                }
+                bool hadBrackets = false;
+                string inner = stripBrackets(op2, hadBrackets);
+
+                if (hadBrackets)
+                {
+                    signed char mode, value;
+                    resolveAddressOperand(op2, mode, value);
+                    program.push_back((signed char)0x0B); // LOAD
+                    program.push_back((signed char)registerIndex(op1));
+                    program.push_back(mode);
+                    program.push_back(value);
+                }
+                else if (isRegisterToken(op2))
+                {
+                    program.push_back((signed char)0x05); // MOV
+                    program.push_back((signed char)registerIndex(op1));
+                    program.push_back((signed char)registerIndex(op2));
+                }
+                else if (isNumberToken(op2))
+                {
+                    program.push_back((signed char)0x01); // LDI
+                    program.push_back((signed char)registerIndex(op1));
+                    program.push_back((signed char)atoi(op2.c_str()));
+                }
+                else
+                {
+                    throw invalid_argument("Invalid source operand for MOV: '" + op2 + "'");
+                }
+            }
+            else if (mnemonic == "ADD" || mnemonic == "SUB" || mnemonic == "MUL" || mnemonic == "DIV")
+            {
+                if (opCount != 2 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument(mnemonic + " requires a destination register and a register/immediate operand.");
+                }
+
+                if (isRegisterToken(op2))
+                {
+                    signed char opcode = (mnemonic == "ADD") ? 0x02 :
+                                          (mnemonic == "SUB") ? 0x06 :
+                                          (mnemonic == "MUL") ? 0x07 : 0x08;
+                    program.push_back(opcode);
+                    program.push_back((signed char)registerIndex(op1));
+                    program.push_back((signed char)registerIndex(op2));
+                }
+                else if (isNumberToken(op2))
+                {
+                    signed char opcode = (mnemonic == "ADD") ? 0x14 :
+                                          (mnemonic == "SUB") ? 0x15 :
+                                          (mnemonic == "MUL") ? 0x16 : 0x17;
+                    program.push_back(opcode);
+                    program.push_back((signed char)registerIndex(op1));
+                    program.push_back((signed char)atoi(op2.c_str()));
+                }
+                else
+                {
+                    throw invalid_argument("Invalid second operand for " + mnemonic + ": '" + op2 + "'");
+                }
+            }
+            else if (mnemonic == "ADDI" || mnemonic == "SUBI" || mnemonic == "MULI" || mnemonic == "DIVI")
+            {
+                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                {
+                    throw invalid_argument(mnemonic + " requires: Rn, immediate");
+                }
+
+                signed char opcode =
+                    (mnemonic == "ADDI") ? 0x14 :
+                    (mnemonic == "SUBI") ? 0x15 :
+                    (mnemonic == "MULI") ? 0x16 :
+                                            0x17;
+
+                program.push_back(opcode);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+            }
+            else if (mnemonic == "INC" || mnemonic == "DEC")
+            {
+                if (opCount != 1 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument(mnemonic + " requires one register.");
+                }
+                program.push_back((signed char)(mnemonic == "INC" ? 0x09 : 0x0A));
+                program.push_back((signed char)registerIndex(op1));
+            }
+            else if (mnemonic == "ROL" || mnemonic == "ROR" || mnemonic == "SHL" || mnemonic == "SHR")
+            {
+                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                {
+                    throw invalid_argument(mnemonic + " requires a register and a count.");
+                }
+                signed char opcode = (mnemonic == "ROL") ? 0x0D :
+                                      (mnemonic == "ROR") ? 0x0E :
+                                      (mnemonic == "SHL") ? 0x0F : 0x10;
+                program.push_back(opcode);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+            }
+            else if (mnemonic == "LOAD")
+            {
+                if (opCount != 2 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument("LOAD requires a destination register and an address/register.");
+                }
+                signed char mode, value;
+                resolveAddressOperand(op2, mode, value);
+                program.push_back((signed char)0x0B);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back(mode);
+                program.push_back(value);
+            }
+            else if (mnemonic == "STORE")
+            {
+                if (opCount != 2)
+                {
+                    throw invalid_argument("STORE requires two operands.");
+                }
+                bool op1Bracketed = false, op2Bracketed = false;
+                string op1Inner = stripBrackets(op1, op1Bracketed);
+                string op2Inner = stripBrackets(op2, op2Bracketed);
+
+                string addrOperand, regOperand;
+                if (op1Bracketed || isNumberToken(op1Inner))
+                {
+                    addrOperand = op1; regOperand = op2;
+                }
+                else
+                {
+                    addrOperand = op2; regOperand = op1;
+                }
+
+                if (!isRegisterToken(regOperand))
+                {
+                    throw invalid_argument("STORE could not identify the source register.");
+                }
+
+                signed char mode, value;
+                resolveAddressOperand(addrOperand, mode, value);
+                program.push_back((signed char)0x0C);
+                program.push_back(mode);
+                program.push_back(value);
+                program.push_back((signed char)registerIndex(regOperand));
+            }
+            else if (mnemonic == "PUSH" || mnemonic == "POP")
+            {
+                if (opCount != 1 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument(mnemonic + " requires one register.");
+                }
+                program.push_back((signed char)(mnemonic == "PUSH" ? 0x03 : 0x04));
+                program.push_back((signed char)registerIndex(op1));
+            }
+            else if (mnemonic == "INPUT" || mnemonic == "DISPLAY")
+            {
+                if (opCount != 1 || !isRegisterToken(op1))
+                {
+                    throw invalid_argument(mnemonic + " requires one register.");
+                }
+                program.push_back((signed char)(mnemonic == "INPUT" ? 0x11 : 0x12));
+                program.push_back((signed char)registerIndex(op1));
+            }
+            else if (mnemonic == "RESET")
+            {
+                if (opCount != 1)
+                {
+                    throw invalid_argument("RESET requires one flag name (OF, UF, CF, or ZF).");
+                }
+                string flagName = toUpper(trim(op1));
+                signed char flagCode;
+                if (flagName == "OF") flagCode = 0;
+                else if (flagName == "UF") flagCode = 1;
+                else if (flagName == "CF") flagCode = 2;
+                else if (flagName == "ZF") flagCode = 3;
+                else throw invalid_argument("Unknown flag for RESET: '" + op1 + "'");
+
+                program.push_back((signed char)0x13);
+                program.push_back(flagCode);
+            }
+            else
+            {
+                throw invalid_argument("Unknown instruction mnemonic: '" + mnemonic + "'");
+            }
+        }
+
+    public:
+        Runner() {}
+        bool loadFile(const string &filename)
+        {
+            ifstream file(filename.c_str());
+            if (!file.is_open())
+            {
+                cout << "Error: Could not open assembly file '" << filename << "'." << endl;
+                return false;
+            }
+
+            string line;
+            while (getline(file, line))
+            {
+                size_t commentPos = line.find(';');
+                if (commentPos != string::npos) line = line.substr(0, commentPos);
+
+                line = trim(line);
+                if (line.empty()) continue; // empty lines are ignored
+
+                sourceLines.push_back(line);
+            }
+
+            file.close();
+            return true;
+        }
+
+        void assemble()
+        {
+            for (int i = 0; i < sourceLines.size(); i++)
+            {
+                assembleLine(sourceLines[i], i + 1);
+            }
+        }
+
+        void execute()
+        {
+            int size = program.size();
+            signed char* bytes = new signed char[size > 0 ? size : 1];
+            for (int i = 0; i < size; i++) bytes[i] = program[i];
+
+            vm.loadProgram(bytes, size);
+            delete[] bytes;
+
+            cout << "=== Running VirtualMachine.asm ===" << endl;
+            vm.run();
+            cout << endl;
+
+            vm.printState();
+            cout << endl;
+
+            const int bufSize = 4096;
+            char buffer[bufSize];
+            vm.getFormattedState(buffer, bufSize);
+            cout << buffer;
+        }
+};
+
+int main()
+    {
+        Runner runner;
+
+        if (!runner.loadFile("VirtualMachine.asm"))
+        {
+            return 1;
+        }
+
+        try
+        {
+            runner.assemble();
+            runner.execute();
+        }
+        catch (const exception &e)
+        {
+            cout << "Runtime/Assembler Error: " << e.what() << endl;
+            return 1;
+        }
+
+        return 0;
+    }
