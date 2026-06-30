@@ -32,12 +32,29 @@ Written by:       MUHAMMAD YUSOF BIN SHAHILAN
 Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Implementing instruction set, opcode parsing, and execution logic
 ===========================================================================================
+/*
 ===========================================================================================
-PART:             Runner (interpreter)
-Written by:       NURSYAHIRAH AQILAH BINTI AINUL HISHAM
-Lectures Covered: 1,2,3,4,7,8
-Responsibility:   Read .asm file, convert each line into opcode + operand
-                   bytes, load into VirtualMachine memory, run, dump state
+PART             :Runner (Interpreter)
+Written by       :NURSYAHIRAH AQILAH BINTI AINUL HISHAM (252UC243DZ)
+Responsibility   :Acts as the interface between the assembly source program and the VirtualMachine by:
+                  - Reading the .asm source file line by line
+                  - Removing comments and ignoring empty lines
+                  - Validating instruction syntax and operands
+                  - Detecting invalid mnemonics and multiple instructions per line
+                  - Translating assembly instructions into machine code (opcodes)
+                  - Encoding operands (registers, immediate values, memory addresses)
+                  - Loading the assembled bytecode into VirtualMachine memory
+                  - Starting program execution
+                  - Displaying the final Virtual Machine state and memory dump
+
+OOP Concepts Covered:
+1. Encapsulation      :Runner stores the VirtualMachine instance, source code, and assembled program as private members.
+2. Composition        :Runner owns a VirtualMachine object and DynamicArray objects for source lines and machine code.
+3. Abstraction        :Provides a simple interface (loadFile(), assemble(), execute()) while hiding the assembly process.
+4. Exception Handling :Throws and propagates syntax errors, invalid operands, unknown instructions, and file loading errors.
+5. Data Validation    :Validates registers, numbers, memory operands, and instruction formats before execution.
+6. String Processing  :Implements helper functions for trimming whitespace, converting to uppercase, splitting operands, removing brackets, and parsing assembly instructions.
+7. Machine Code Generation :Converts human-readable assembly instructions into opcode and operand bytes understood by the VirtualMachine.
 ===========================================================================================
 */
 
@@ -1353,7 +1370,7 @@ class VirtualMachine
             };
 
             append("#Begin#\n");
-            append("#Registers#\n");
+            append("#Registers#");
 
             for (int i = 0; i < 8; i++) {
                 int val = registers[i].getValue();
@@ -1362,14 +1379,14 @@ class VirtualMachine
             }
             append("#\n");
 
-            append("#Flags#\n");
+            append("#Flags#");
             // Use getFlagsString for flags
             char flagBuf[64];
             flags.getFlagsString(flagBuf, 64);
             append(flagBuf);
             append("\n");
 
-            append("#PC#\n");
+            append("#PC#");
             appendInt(PC, 4);
             append("#\n");
 
@@ -1547,6 +1564,9 @@ Responsibility:   - Reads the .asm text file line by line into a DynamicArray<st
                      VirtualMachine's Memory via loadProgram()
                    - Runs the VirtualMachine and dumps the final state to the
                      terminal in the exact required "#Begin# ... #End#" format
+
+
+
 ===========================================================================================
 */
 
@@ -1557,12 +1577,15 @@ class Runner
         DynamicArray<string> sourceLines;  //raw lines to read from .asm file
         DynamicArray<signed char> program; // assembled opcode/operand byte stream
 
+        //Remove leading and trailing whitespace from string from .asm file
         static string trim(const string &s)
         {
             int start = 0;
             int end = (int)s.size() -1;
+            //find first non-space character
             while(start <= end && isspace((unsigned char)s[start]))
                 start ++;
+            //find last non-space character
             while(end >= start && isspace((unsigned char)s[end]))
                 end --;
             if(end<start)
@@ -1570,6 +1593,7 @@ class Runner
             return s.substr(start, end - start +1);
         }
 
+        //covert all character to uppercase letter
         static string toUpper(const string &s)
         {
             string result = s;
@@ -1578,6 +1602,7 @@ class Runner
             return result;
         }
 
+        //remove brackets from memory operands
         static string stripBrackets(const string &s, bool &hadBrackets)
             {
                 string t = trim(s);
@@ -1590,6 +1615,7 @@ class Runner
                 return t;
             }
 
+        //check whether a token is a valid register name (R0-R7)
         static bool isRegisterToken(const string &s)
         {
             string t = toUpper(trim(s));
@@ -1599,12 +1625,14 @@ class Runner
             return true;
         }
 
+        //convert reg name into its register number(removes R)
         static int registerIndex(const string &s)
         {
             string t = toUpper(trim(s));
             return t[1] - '0';
         }
 
+        //make sure an operand is valid signed decimal interger
         static bool isNumberToken(const string &s)
         {
             string t = trim(s);
@@ -1641,6 +1669,7 @@ class Runner
             return 2;
         }
 
+        //determine whether an adress refers to; direch memory address (mode 0) or register containing an address (mode 1)
         static void resolveAddressOperand(const string &operand, signed char &mode, signed char &value)
         {
             bool hadBrackets = false;
@@ -1662,6 +1691,7 @@ class Runner
             }
         }
 
+        //detect invalid instruction or multiple instruction in one line
         static bool isMnemonic(const string &token)
         {
             string t = toUpper(trim(token));
@@ -1675,241 +1705,228 @@ class Runner
             return false;
         }
 
+        /*  Reject lines with more than one instruction mnemonic. Split out
+            of assembleLine() to keep both functions under 35 lines.
+            By: NURSYAHIRAH
+        */
+        static void checkSingleInstruction(const string &mnemonic, const string &rest, int lineNumber)
+        {
+            int mnemonicCount = isMnemonic(mnemonic) ? 1 : 0;
+            string tmp = rest;
+            for (size_t i = 0; i < tmp.size(); i++) { if (tmp[i] == ',') tmp[i] = ' '; }
+            stringstream ss(tmp);
+            string tok;
+            while (ss >> tok)
+            {
+                if (isMnemonic(tok)) mnemonicCount++;
+            }
+            if (mnemonicCount > 1)
+            {
+                cout << "Assembler Error (line " << lineNumber
+                     << "): more than one instruction found on a single line." << endl;
+                exit(1);
+            }
+        }
+
+        // ---- assembleXxx() helpers: one per instruction family, each <35 lines ----
+        // By: NURSYAHIRAH (split out of the original monolithic assembleLine)
+
+        void assembleMoveFamily(const string &mnemonic, const string &op1, const string &op2, int opCount)
+        {
+            if (mnemonic == "LDI")
+            {
+                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                    throw invalid_argument("LDI requires: LDI Rn, immediate");
+                program.push_back(0x01);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+                return;
+            }
+            // mnemonic == "MOV"
+            if (opCount != 2 || !isRegisterToken(op1))
+                throw invalid_argument("MOV requires a destination register and a source operand.");
+            bool hadBrackets = false;
+            string inner = stripBrackets(op2, hadBrackets);
+            if (hadBrackets)
+            {
+                signed char mode, value;
+                resolveAddressOperand(op2, mode, value);
+                program.push_back((signed char)0x0B); // LOAD
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back(mode);
+                program.push_back(value);
+            }
+            else if (isRegisterToken(op2))
+            {
+                program.push_back((signed char)0x05); // MOV
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)registerIndex(op2));
+            }
+            else if (isNumberToken(op2))
+            {
+                program.push_back((signed char)0x01); // LDI
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+            }
+            else throw invalid_argument("Invalid source operand for MOV: '" + op2 + "'");
+        }
+
+        void assembleArithmeticFamily(const string &mnemonic, const string &op1, const string &op2, int opCount)
+        {
+            if (opCount != 2 || !isRegisterToken(op1))
+                throw invalid_argument(mnemonic + " requires a destination register and a register/immediate operand.");
+
+            if (isRegisterToken(op2))
+            {
+                signed char opcode = (mnemonic == "ADD") ? 0x02 :
+                                      (mnemonic == "SUB") ? 0x06 :
+                                      (mnemonic == "MUL") ? 0x07 : 0x08;
+                program.push_back(opcode);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)registerIndex(op2));
+            }
+            else if (isNumberToken(op2))
+            {
+                signed char opcode = (mnemonic == "ADD") ? 0x14 :
+                                      (mnemonic == "SUB") ? 0x15 :
+                                      (mnemonic == "MUL") ? 0x16 : 0x17;
+                program.push_back(opcode);
+                program.push_back((signed char)registerIndex(op1));
+                program.push_back((signed char)atoi(op2.c_str()));
+            }
+            else throw invalid_argument("Invalid second operand for " + mnemonic + ": '" + op2 + "'");
+        }
+
+        void assembleImmediateFamily(const string &mnemonic, const string &op1, const string &op2, int opCount)
+        {
+            if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                throw invalid_argument(mnemonic + " requires: Rn, immediate");
+
+            signed char opcode =
+                (mnemonic == "ADDI") ? 0x14 :
+                (mnemonic == "SUBI") ? 0x15 :
+                (mnemonic == "MULI") ? 0x16 : 0x17;
+
+            program.push_back(opcode);
+            program.push_back((signed char)registerIndex(op1));
+            program.push_back((signed char)atoi(op2.c_str()));
+        }
+
+        void assembleShiftFamily(const string &mnemonic, const string &op1, const string &op2, int opCount)
+        {
+            if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
+                throw invalid_argument(mnemonic + " requires a register and a count.");
+            signed char opcode = (mnemonic == "ROL") ? 0x0D :
+                                  (mnemonic == "ROR") ? 0x0E :
+                                  (mnemonic == "SHL") ? 0x0F : 0x10;
+            program.push_back(opcode);
+            program.push_back((signed char)registerIndex(op1));
+            program.push_back((signed char)atoi(op2.c_str()));
+        }
+
+        void assembleLoad(const string &op1, const string &op2, int opCount)
+        {
+            if (opCount != 2 || !isRegisterToken(op1))
+                throw invalid_argument("LOAD requires a destination register and an address/register.");
+            signed char mode, value;
+            resolveAddressOperand(op2, mode, value);
+            program.push_back((signed char)0x0B);
+            program.push_back((signed char)registerIndex(op1));
+            program.push_back(mode);
+            program.push_back(value);
+        }
+
+        void assembleStore(const string &op1, const string &op2, int opCount)
+        {
+            if (opCount != 2)
+                throw invalid_argument("STORE requires two operands.");
+            bool op1Bracketed = false, op2Bracketed = false;
+            string op1Inner = stripBrackets(op1, op1Bracketed);
+            string op2Inner = stripBrackets(op2, op2Bracketed);
+
+            string addrOperand, regOperand;
+            if (op1Bracketed || isNumberToken(op1Inner)) { addrOperand = op1; regOperand = op2; }
+            else { addrOperand = op2; regOperand = op1; }
+
+            if (!isRegisterToken(regOperand))
+                throw invalid_argument("STORE could not identify the source register.");
+
+            signed char mode, value;
+            resolveAddressOperand(addrOperand, mode, value);
+            program.push_back((signed char)0x0C);
+            program.push_back(mode);
+            program.push_back(value);
+            program.push_back((signed char)registerIndex(regOperand));
+        }
+
+        void assembleResetInstr(const string &op1, int opCount)
+        {
+            if (opCount != 1)
+                throw invalid_argument("RESET requires one flag name (OF, UF, CF, or ZF).");
+            string flagName = toUpper(trim(op1));
+            signed char flagCode;
+            if (flagName == "OF") flagCode = 0;
+            else if (flagName == "UF") flagCode = 1;
+            else if (flagName == "CF") flagCode = 2;
+            else if (flagName == "ZF") flagCode = 3;
+            else throw invalid_argument("Unknown flag for RESET: '" + op1 + "'");
+            program.push_back((signed char)0x13);
+            program.push_back(flagCode);
+        }
+
+        /*  Top-level dispatcher: parses one line and delegates to the
+            matching assembleXxx() helper. Kept under 35 lines by pushing
+            each instruction family's logic into its own helper above.
+            By: NURSYAHIRAH
+        */
         void assembleLine(const string &rawLine, int lineNumber)
         {
             string line = trim(rawLine);
-
             size_t spacePos = line.find_first_of(" \t");
             string mnemonic = (spacePos == string::npos) ? line : line.substr(0, spacePos);
             string rest = (spacePos == string::npos) ? "" : line.substr(spacePos + 1);
             mnemonic = toUpper(trim(mnemonic));
 
-            {
-                int mnemonicCount = isMnemonic(mnemonic) ? 1 : 0;
-                string tmp = rest;
-                for (size_t i = 0; i < tmp.size(); i++) { if (tmp[i] == ',') tmp[i] = ' '; }
-                stringstream ss(tmp);
-                string tok;
-                while (ss >> tok)
-                {
-                    if (isMnemonic(tok)) mnemonicCount++;
-                }
-                if (mnemonicCount > 1)
-                {
-                    cout << "Assembler Error (line " << lineNumber
-                         << "): more than one instruction found on a single line." << endl;
-                    exit(1);
-                }
-            }
+            checkSingleInstruction(mnemonic, rest, lineNumber);
 
             string op1, op2;
             int opCount = splitOperands(rest, op1, op2);
 
-            if (mnemonic == "HLT")
-            {
-                program.push_back((signed char)0x00);
-            }
-            else if (mnemonic == "LDI")
-            {
-                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
-                    throw invalid_argument("LDI requires: LDI Rn, immediate");
-
-                program.push_back(0x01);
-                program.push_back((signed char)registerIndex(op1));
-                program.push_back((signed char)atoi(op2.c_str()));
-            }
-            else if (mnemonic == "MOV")
-            {
-                if (opCount != 2 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument("MOV requires a destination register and a source operand.");
-                }
-                bool hadBrackets = false;
-                string inner = stripBrackets(op2, hadBrackets);
-
-                if (hadBrackets)
-                {
-                    signed char mode, value;
-                    resolveAddressOperand(op2, mode, value);
-                    program.push_back((signed char)0x0B); // LOAD
-                    program.push_back((signed char)registerIndex(op1));
-                    program.push_back(mode);
-                    program.push_back(value);
-                }
-                else if (isRegisterToken(op2))
-                {
-                    program.push_back((signed char)0x05); // MOV
-                    program.push_back((signed char)registerIndex(op1));
-                    program.push_back((signed char)registerIndex(op2));
-                }
-                else if (isNumberToken(op2))
-                {
-                    program.push_back((signed char)0x01); // LDI
-                    program.push_back((signed char)registerIndex(op1));
-                    program.push_back((signed char)atoi(op2.c_str()));
-                }
-                else
-                {
-                    throw invalid_argument("Invalid source operand for MOV: '" + op2 + "'");
-                }
-            }
+            if (mnemonic == "HLT") { program.push_back((signed char)0x00); }
+            else if (mnemonic == "LDI" || mnemonic == "MOV") assembleMoveFamily(mnemonic, op1, op2, opCount);
             else if (mnemonic == "ADD" || mnemonic == "SUB" || mnemonic == "MUL" || mnemonic == "DIV")
-            {
-                if (opCount != 2 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument(mnemonic + " requires a destination register and a register/immediate operand.");
-                }
-
-                if (isRegisterToken(op2))
-                {
-                    signed char opcode = (mnemonic == "ADD") ? 0x02 :
-                                          (mnemonic == "SUB") ? 0x06 :
-                                          (mnemonic == "MUL") ? 0x07 : 0x08;
-                    program.push_back(opcode);
-                    program.push_back((signed char)registerIndex(op1));
-                    program.push_back((signed char)registerIndex(op2));
-                }
-                else if (isNumberToken(op2))
-                {
-                    signed char opcode = (mnemonic == "ADD") ? 0x14 :
-                                          (mnemonic == "SUB") ? 0x15 :
-                                          (mnemonic == "MUL") ? 0x16 : 0x17;
-                    program.push_back(opcode);
-                    program.push_back((signed char)registerIndex(op1));
-                    program.push_back((signed char)atoi(op2.c_str()));
-                }
-                else
-                {
-                    throw invalid_argument("Invalid second operand for " + mnemonic + ": '" + op2 + "'");
-                }
-            }
+                assembleArithmeticFamily(mnemonic, op1, op2, opCount);
             else if (mnemonic == "ADDI" || mnemonic == "SUBI" || mnemonic == "MULI" || mnemonic == "DIVI")
-            {
-                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
-                {
-                    throw invalid_argument(mnemonic + " requires: Rn, immediate");
-                }
-
-                signed char opcode =
-                    (mnemonic == "ADDI") ? 0x14 :
-                    (mnemonic == "SUBI") ? 0x15 :
-                    (mnemonic == "MULI") ? 0x16 :
-                                            0x17;
-
-                program.push_back(opcode);
-                program.push_back((signed char)registerIndex(op1));
-                program.push_back((signed char)atoi(op2.c_str()));
-            }
+                assembleImmediateFamily(mnemonic, op1, op2, opCount);
             else if (mnemonic == "INC" || mnemonic == "DEC")
             {
-                if (opCount != 1 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument(mnemonic + " requires one register.");
-                }
+                if (opCount != 1 || !isRegisterToken(op1)) throw invalid_argument(mnemonic + " requires one register.");
                 program.push_back((signed char)(mnemonic == "INC" ? 0x09 : 0x0A));
                 program.push_back((signed char)registerIndex(op1));
             }
             else if (mnemonic == "ROL" || mnemonic == "ROR" || mnemonic == "SHL" || mnemonic == "SHR")
-            {
-                if (opCount != 2 || !isRegisterToken(op1) || !isNumberToken(op2))
-                {
-                    throw invalid_argument(mnemonic + " requires a register and a count.");
-                }
-                signed char opcode = (mnemonic == "ROL") ? 0x0D :
-                                      (mnemonic == "ROR") ? 0x0E :
-                                      (mnemonic == "SHL") ? 0x0F : 0x10;
-                program.push_back(opcode);
-                program.push_back((signed char)registerIndex(op1));
-                program.push_back((signed char)atoi(op2.c_str()));
-            }
-            else if (mnemonic == "LOAD")
-            {
-                if (opCount != 2 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument("LOAD requires a destination register and an address/register.");
-                }
-                signed char mode, value;
-                resolveAddressOperand(op2, mode, value);
-                program.push_back((signed char)0x0B);
-                program.push_back((signed char)registerIndex(op1));
-                program.push_back(mode);
-                program.push_back(value);
-            }
-            else if (mnemonic == "STORE")
-            {
-                if (opCount != 2)
-                {
-                    throw invalid_argument("STORE requires two operands.");
-                }
-                bool op1Bracketed = false, op2Bracketed = false;
-                string op1Inner = stripBrackets(op1, op1Bracketed);
-                string op2Inner = stripBrackets(op2, op2Bracketed);
-
-                string addrOperand, regOperand;
-                if (op1Bracketed || isNumberToken(op1Inner))
-                {
-                    addrOperand = op1; regOperand = op2;
-                }
-                else
-                {
-                    addrOperand = op2; regOperand = op1;
-                }
-
-                if (!isRegisterToken(regOperand))
-                {
-                    throw invalid_argument("STORE could not identify the source register.");
-                }
-
-                signed char mode, value;
-                resolveAddressOperand(addrOperand, mode, value);
-                program.push_back((signed char)0x0C);
-                program.push_back(mode);
-                program.push_back(value);
-                program.push_back((signed char)registerIndex(regOperand));
-            }
+                assembleShiftFamily(mnemonic, op1, op2, opCount);
+            else if (mnemonic == "LOAD") assembleLoad(op1, op2, opCount);
+            else if (mnemonic == "STORE") assembleStore(op1, op2, opCount);
             else if (mnemonic == "PUSH" || mnemonic == "POP")
             {
-                if (opCount != 1 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument(mnemonic + " requires one register.");
-                }
+                if (opCount != 1 || !isRegisterToken(op1)) throw invalid_argument(mnemonic + " requires one register.");
                 program.push_back((signed char)(mnemonic == "PUSH" ? 0x03 : 0x04));
                 program.push_back((signed char)registerIndex(op1));
             }
             else if (mnemonic == "INPUT" || mnemonic == "DISPLAY")
             {
-                if (opCount != 1 || !isRegisterToken(op1))
-                {
-                    throw invalid_argument(mnemonic + " requires one register.");
-                }
+                if (opCount != 1 || !isRegisterToken(op1)) throw invalid_argument(mnemonic + " requires one register.");
                 program.push_back((signed char)(mnemonic == "INPUT" ? 0x11 : 0x12));
                 program.push_back((signed char)registerIndex(op1));
             }
-            else if (mnemonic == "RESET")
-            {
-                if (opCount != 1)
-                {
-                    throw invalid_argument("RESET requires one flag name (OF, UF, CF, or ZF).");
-                }
-                string flagName = toUpper(trim(op1));
-                signed char flagCode;
-                if (flagName == "OF") flagCode = 0;
-                else if (flagName == "UF") flagCode = 1;
-                else if (flagName == "CF") flagCode = 2;
-                else if (flagName == "ZF") flagCode = 3;
-                else throw invalid_argument("Unknown flag for RESET: '" + op1 + "'");
-
-                program.push_back((signed char)0x13);
-                program.push_back(flagCode);
-            }
-            else
-            {
-                throw invalid_argument("Unknown instruction mnemonic: '" + mnemonic + "'");
-            }
+            else if (mnemonic == "RESET") assembleResetInstr(op1, opCount);
+            else throw invalid_argument("Unknown instruction mnemonic: '" + mnemonic + "'");
         }
 
     public:
         Runner() {}
+        //read .asm file, remove comments and store valid instruction for assembly
         bool loadFile(const string &filename)
         {
             ifstream file(filename.c_str());
