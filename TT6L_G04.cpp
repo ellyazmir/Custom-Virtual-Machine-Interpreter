@@ -23,8 +23,27 @@ OOP Concepts Covered:
 ===========================================================================================
 PART:             Hardware Lead
 Written by:       AMIRA SOFIA
-Lectures Covered: 1,2,3,4,7,8
 Responsibility:   Track ZF, CF, OF, UF flags
+                  - FlagRegister class implementation (ZF, CF, OF, UF flags)
+                  - updateArithmeticFlags()
+                  - updateInputFlags()
+                  - updateShiftFlags()
+                  - updateIncrementFlags()
+                  - updateDecrementFlags()
+                  - updateROLFlags()
+                  - updateRORFlags()
+                  - resetFlag()
+                  - resetFlags()
+                  - displayFlags()
+                  - getFlagsString()
+                  - executeRESET()
+
+OOP Concepts Covered:
+1. Encapsulation      :FlagRegister class members are private, access via public getters/setters
+2. Composition        :FlagRegister is composed into VirtualMachine (strong ownership)
+3. Exception Handling :throw for unknown flag types
+4. Deep Copy          :Copy constructor & assignment operator implemented for FlagRegister
+5. Polymorphism       :FlagRegister works polymorphically within VirtualMachine
 ===========================================================================================
 ===========================================================================================
 PART:             Logic Arithmatic Lead
