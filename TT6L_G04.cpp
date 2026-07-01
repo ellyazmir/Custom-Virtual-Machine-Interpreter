@@ -690,6 +690,7 @@ class VirtualMachine
         int PC;         // Program Counter (starts at 0)
         signed char SI; // Stack Index (starts at 0)
         bool isRunning; // execution state
+        int instructionCount;
 
         /*  These methods implement individual instructions
             By  -  YUSOF   :ALU instructions (ADD, SUB, MUL, DIV, INC, DEC,
@@ -960,7 +961,7 @@ class VirtualMachine
 
         /* INPUT <DestReg> : reads & validates keyboard input.
         DISPLAY <SrcReg> : prints register's value to terminal
-        By: NURSYAHIRAH */
+        By: NURSYAHIRAH AQILAH */
         void executeINPUT()
         {
             signed char destReg = memory.read(PC++);
@@ -1025,7 +1026,7 @@ class VirtualMachine
                 - initialize 8 registers (R0-R7)
                 - memory & flags already initialized via their constructors
         */
-        VirtualMachine() : PC(0), SI(0), isRunning(false)
+        VirtualMachine() : PC(0), SI(0), isRunning(false), instructionCount(0)
         {
             registers[0] = GeneralRegister("R0");
             registers[1] = GeneralRegister("R1");
@@ -1040,7 +1041,8 @@ class VirtualMachine
         // copy: deep copy of another VirtualMachine
         VirtualMachine(const VirtualMachine& other)
                       : memory(other.memory), stack(other.stack), flags(other.flags),
-                        PC(other.PC), SI(other.SI), isRunning(other.isRunning)
+                        PC(other.PC), SI(other.SI), isRunning(other.isRunning),
+                        instructionCount(other.instructionCount)
         {
             for (int i = 0; i < 8; i++) { registers[i] = other.registers[i]; }
         }
@@ -1056,6 +1058,7 @@ class VirtualMachine
                 PC     = other.PC;
                 SI     = other.SI;
                 isRunning = other.isRunning;
+                instructionCount = other.instructionCount;
 
                 for (int i = 0; i < 8; i++) { registers[i] = other.registers[i]; }
             }
@@ -1103,7 +1106,7 @@ class VirtualMachine
         }
 
         // Get/Set Program Counter value
-        int getPC() const {return PC;}
+        int getPC() const {return instructionCount;}
         void setPC(int value) {PC = value;}
 
         // Get/Set Stack Index value
@@ -1114,11 +1117,19 @@ class VirtualMachine
         bool isRunningState() const {return isRunning;}
         void setRunningState(bool state) {isRunning = state;}
 
+        //Count the PC according to number of lines
+        // BY : NURSYAHIRAH AQILAH
+        void InstructionCounter()
+        {
+            instructionCount++;
+        }
+
         /*  reset entire VM to initial state
                 - clear memory
                 - reset all flags
                 - PC = 0, SI = 0, isRunning = false
                 - all registers set to 0
+            BY : YUSOF
         */
         void reset()
         {
@@ -1128,6 +1139,7 @@ class VirtualMachine
             PC = 0;
             SI = 0;
             isRunning = false;
+            instructionCount = 0;
 
             for (int i = 0; i < 8; i++) { registers[i].setValue(0); }
         }
@@ -1146,6 +1158,7 @@ class VirtualMachine
 
             PC = 0;
             isRunning = false;
+            instructionCount = 0;
         }
 
         /*  load a program (opcodes) into memory (for opcode values 0-255)
@@ -1162,6 +1175,7 @@ class VirtualMachine
 
             PC = 0;
             isRunning = false;
+            instructionCount = 0;
         }
 
         /*  execute the loaded program
@@ -1218,74 +1232,74 @@ class VirtualMachine
                         break;
 
                     // yusof
-                    case LDI: executeLDI();
+                    case LDI: executeLDI(); InstructionCounter();
                         break;
 
-                    case ADD: executeADD();
+                    case ADD: executeADD(); InstructionCounter();
                         break;
 
-                    case PUSH: executePUSH();
+                    case PUSH: executePUSH(); InstructionCounter();
                         break;
 
-                    case POP: executePOP();
+                    case POP: executePOP(); InstructionCounter();
                         break;
 
-                    case MOV: executeMOV();
+                    case MOV: executeMOV(); InstructionCounter();
                         break;
 
-                    case SUB: executeSUB();
+                    case SUB: executeSUB(); InstructionCounter();
                         break;
 
-                    case MUL: executeMUL();
+                    case MUL: executeMUL(); InstructionCounter();
                         break;
 
-                    case DIV: executeDIV();
+                    case DIV: executeDIV(); InstructionCounter();
                         break;
 
-                    case INC: executeINC();
+                    case INC: executeINC(); InstructionCounter();
                         break;
 
-                    case DEC: executeDEC();
+                    case DEC: executeDEC(); InstructionCounter();
                         break;
 
-                    case LOAD:executeLOAD();
+                    case LOAD:executeLOAD(); InstructionCounter();
                         break;
 
-                    case STORE: executeSTORE();
+                    case STORE: executeSTORE(); InstructionCounter();
                         break;
 
-                    case ROL: executeROL();
+                    case ROL: executeROL(); InstructionCounter();
                         break;
 
-                    case ROR: executeROR();
+                    case ROR: executeROR(); InstructionCounter();
                         break;
 
-                    case SHL: executeSHL();
+                    case SHL: executeSHL(); InstructionCounter();
                         break;
 
-                    case SHR: executeSHR();
+                    case SHR: executeSHR(); InstructionCounter();
                         break;
 
                     // syahirah
-                    case INPUT: executeINPUT();
+                    case INPUT: executeINPUT(); InstructionCounter();
                         break;
 
-                    case DISPLAY: executeDISPLAY();
+                    case DISPLAY: executeDISPLAY(); InstructionCounter();
                         break;
 
-                    case RESET: executeRESET();
+                    case RESET: executeRESET(); InstructionCounter();
                         break;
 
-                    case ADDI: executeADDI();
+                    case ADDI: executeADDI(); InstructionCounter();
                         break;
 
-                    case SUBI: executeSUBI();
+                    case SUBI: executeSUBI(); InstructionCounter();
                         break;
 
-                    case MULI: executeMULI();
+                    case MULI: executeMULI(); InstructionCounter();
                         break;
 
-                    case DIVI: executeDIVI();
+                    case DIVI: executeDIVI(); InstructionCounter();
                         break;
 
                     default:
@@ -1308,7 +1322,7 @@ class VirtualMachine
             cout << "Flags: ";
             flags.displayFlags();
 
-            cout << "PC: " << PC << ", SI: " << (int)SI << endl;
+            cout << "PC: " << instructionCount << ", SI: " << (int)SI << endl;
             cout << "==============================" << endl;
         }
 
@@ -1387,7 +1401,7 @@ class VirtualMachine
             append("\n");
 
             append("#PC#");
-            appendInt(PC, 4);
+            appendInt(instructionCount, 4);
             append("#\n");
 
             append("#Memory#\n");
